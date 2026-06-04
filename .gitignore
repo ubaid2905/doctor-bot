@@ -1,0 +1,20 @@
+# Secret keys — NEVER upload these
+.env
+.env.local
+.env.production
+
+# Node packages — too large, regenerated with npm install
+node_modules/
+
+# VS Code personal settings — not needed by others
+.vscode/
+
+# Mac junk files
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Railway auto-generated
+.railway/
