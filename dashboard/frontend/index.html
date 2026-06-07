@@ -282,6 +282,35 @@ input:focus,select:focus,textarea:focus{border-color:#075e54}
     </div>
   </div>
 </div>
+<!-- MANUAL BOOKING MODAL -->
+<div class="modal-overlay" id="book-modal">
+  <div class="modal">
+    <h3>📅 Book Appointment Manually</h3>
+    <p id="book-modal-date" style="font-size:13px;color:#666;margin-bottom:16px"></p>
+
+    <div class="field">
+      <label>Patient WhatsApp Number</label>
+      <input type="text" id="bk-phone" placeholder="e.g. 923001234567">
+    </div>
+    <div class="field">
+      <label>Patient Name</label>
+      <input type="text" id="bk-name" placeholder="Full name">
+    </div>
+    <div class="field">
+      <label>Available Time Slots</label>
+      <select id="bk-slot">
+        <option value="">Loading slots...</option>
+      </select>
+    </div>
+
+    <div id="bk-msg" style="display:none" class="fmsg"></div>
+
+    <div class="modal-footer">
+      <button class="btn btn-gray" onclick="closeBookModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitManualBooking()">Confirm Booking</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -319,6 +348,77 @@ async function login() {
   token=d.token;role=d.role;uname=d.username;
   localStorage.setItem('token',token);localStorage.setItem('role',role);localStorage.setItem('uname',uname);
   boot();
+}
+let manualBookingDate = null;
+
+async function openManualBooking(dateISO) {
+  manualBookingDate = dateISO;
+  const date = new Date(dateISO);
+
+  document.getElementById('book-modal-date').textContent =
+    date.toLocaleDateString('en-PK', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+  document.getElementById('bk-phone').value = '';
+  document.getElementById('bk-name').value  = '';
+  document.getElementById('bk-msg').style.display = 'none';
+
+  // Load available slots for this date
+  const dateStr = date.toISOString().split('T')[0];
+  const data = await api(`/api/availability/slots/${dateStr}`);
+
+  const select = document.getElementById('bk-slot');
+  if (!data?.slots?.length) {
+    select.innerHTML = '<option value="">No free slots available</option>';
+  } else {
+    select.innerHTML = data.slots
+      .map(s => `<option value="${s}">${s}</option>`)
+      .join('');
+  }
+
+  document.getElementById('book-modal').classList.add('open');
+}
+
+function closeBookModal() {
+  document.getElementById('book-modal').classList.remove('open');
+}
+
+async function submitManualBooking() {
+  const phone    = document.getElementById('bk-phone').value.trim();
+  const name     = document.getElementById('bk-name').value.trim();
+  const timeSlot = document.getElementById('bk-slot').value;
+
+  if (!phone || !timeSlot) {
+    showFMsg('bk-msg', 'err', 'Phone number and time slot are required');
+    return;
+  }
+
+  // Disable button to prevent double click
+  const btn = document.querySelector('#book-modal .btn-primary');
+  btn.disabled = true;
+  btn.textContent = 'Booking...';
+
+  const result = await api('/api/appointments/manual-book', {
+    method: 'POST',
+    body: JSON.stringify({
+      patientPhone: phone,
+      patientName:  name,
+      date:         manualBookingDate,
+      timeSlot
+    })
+  });
+
+  btn.disabled = false;
+  btn.textContent = 'Confirm Booking';
+
+  if (result?.ok) {
+    showFMsg('bk-msg', 'ok', `✅ Booked! WhatsApp confirmation sent to ${phone}`);
+    setTimeout(() => {
+      closeBookModal();
+      renderCalendar();
+      showDayAppointments(new Date(manualBookingDate));
+    }, 2000);
+  } else {
+    showFMsg('bk-msg', 'err', result?.message || 'Booking failed. Try again.');
+  }
 }
 
 function logout() {
@@ -597,9 +697,14 @@ async function showDayAppointments(date) {
     return;
   }
   el.innerHTML=`
-    <h3 style="font-size:14px;font-weight:600;margin-bottom:14px">
-      Appointments — ${date.toLocaleDateString('en-PK',{weekday:'long',month:'long',day:'numeric'})}
-    </h3>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <h3 style="font-size:14px;font-weight:600">
+        Appointments — ${date.toLocaleDateString('en-PK',{weekday:'long',month:'long',day:'numeric'})}
+      </h3>
+      <button class="btn btn-primary btn-sm" onclick="openManualBooking('${date.toISOString()}')">
+        + Book Slot Manually
+      </button>
+    </div>
     ${appts.map(a=>`
       <div style="display:flex;align-items:center;padding:10px 0;border-bottom:1px solid #f5f5f5;gap:12px">
         <div style="background:#075e54;color:#fff;padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;white-space:nowrap">

@@ -590,7 +590,122 @@ app.get('/api/health', (req, res) => res.json({ status: 'running', bot: 'Doctor 
 app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'dashboard/frontend/index.html'));
 });
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  MANUAL APPOINTMENT CREATION (for testing)
+// Manual booking from dashboard
+app.post('/api/appointments/manual-book', requireAuth, async (req, res) => {
+  try {
+    const { patientPhone, patientName, date, timeSlot } = req.body;
+
+    if (!patientPhone || !date || !timeSlot)
+      return res.status(400).json({ message: 'Phone, date and time slot are required' });
+
+    // Find the availability for that date
+    const d = new Date(date); d.setHours(0,0,0,0);
+    const nextDay = new Date(d); nextDay.setDate(nextDay.getDate() + 1);
+
+    const av = await Availability.findOne({
+      date:   { $gte: d, $lt: nextDay },
+      isOpen: true
+    });
+
+    if (!av)
+      return res.status(404).json({ message: 'No availability set for this date' });
+
+    // Find the slot
+    const slot = av.slots.find(s => s.time === timeSlot);
+    if (!slot)
+      return res.status(404).json({ message: 'Slot not found' });
+    if (slot.isBooked)
+      return res.status(400).json({ message: 'This slot is already booked' });
+
+    // Book it atomically
+    const updated = await Availability.findOneAndUpdate(
+      {
+        _id:              av._id,
+        'slots.time':     timeSlot,
+        'slots.isBooked': false
+      },
+      {
+        $set: {
+          'slots.$.isBooked':     true,
+          'slots.$.patientPhone': patientPhone,
+          'slots.$.patientName':  patientName || patientPhone
+        }
+      },
+      { new: true }
+    );
+
+    if (!updated)
+      return res.status(400).json({ message: 'Slot just got booked. Please refresh.' });
+
+    // Create appointment
+    const appt = await Appointment.create({
+      patientPhone,
+      patientName: patientName || patientPhone,
+      date:        d,
+      timeSlot,
+      status:      'confirmed'
+    });
+
+    // Update patient record if exists
+    await Patient.findOneAndUpdate(
+      { phoneNumber: patientPhone },
+      {
+        $set: {
+          appointmentId: appt._id,
+          status:        'confirmed'
+        }
+      }
+    );
+
+    // Send WhatsApp confirmation to patient
+    try {
+      await sendTextMessage(patientPhone,
+        `✅ Appointment Confirmed!\n\n` +
+        `👤 Patient: ${patientName || patientPhone}\n` +
+        `📅 Date: ${d.toLocaleDateString('en-PK', { weekday:'long', month:'long', day:'numeric' })}\n` +
+        `⏰ Time: ${timeSlot}\n` +
+        `👨‍⚕️ Doctor: Dr. ${process.env.DOCTOR_NAME || 'Doctor'}\n` +
+        `📍 ${process.env.CLINIC_ADDRESS || 'Clinic'}\n` +
+        `💰 Fee: PKR ${process.env.CONSULTATION_FEE || '1000'}\n\n` +
+        `Please arrive 10 minutes early.\n` +
+        `JazakAllah Khair! 🤲`
+      );
+    } catch (msgErr) {
+      console.error('WhatsApp notification failed:', msgErr.message);
+      // Don't fail the booking if WhatsApp fails
+    }
+
+    console.log(`📅 Manual booking by ${req.user.username}: ${patientPhone} → ${timeSlot}`);
+    res.json({ ok: true, appointment: appt });
+
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Get free slots for a specific date — used by manual booking form
+app.get('/api/availability/slots/:date', requireAuth, async (req, res) => {
+  try {
+    const d = new Date(req.params.date); d.setHours(0,0,0,0);
+    const nextDay = new Date(d); nextDay.setDate(nextDay.getDate() + 1);
+
+    const av = await Availability.findOne({
+      date:   { $gte: d, $lt: nextDay },
+      isOpen: true
+    });
+
+    if (!av) return res.json({ slots: [], message: 'No availability for this date' });
+
+    const freeSlots = av.slots
+      .filter(s => !s.isBooked)
+      .map(s => s.time);
+
+    res.json({ slots: freeSlots, dayLabel: av.dayLabel });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 // WHATSAPP WEBHOOK
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 app.get('/webhook', (req, res) => {
