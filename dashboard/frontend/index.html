@@ -25,19 +25,24 @@ input:focus,select:focus,textarea:focus{border-color:#075e54}
 .btn-blue{background:#dbeafe;color:#1d4ed8}
 .btn-gray{background:#f3f4f6;color:#374151}
 .btn-orange{background:#ffedd5;color:#c2410c}
+.btn-teal{background:#075e54;color:#fff}
 .err{color:#dc2626;font-size:12px;margin-top:6px}
+/* App */
 #app{display:none;flex:1;flex-direction:column;overflow:hidden}
 .topbar{background:#075e54;color:#fff;padding:0 24px;height:54px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .topbar h1{font-size:16px;font-weight:600}
 .topbar-right{display:flex;align-items:center;gap:12px}
 .role-pill{background:rgba(255,255,255,.2);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
 .topbar button{background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 14px;border-radius:7px;cursor:pointer;font-size:12px}
+/* Nav */
 .nav{background:#fff;border-bottom:1px solid #e8edf2;display:flex;padding:0 24px;flex-shrink:0}
 .nav-item{padding:14px 18px;font-size:13px;font-weight:500;color:#777;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap}
 .nav-item:hover{color:#075e54}
 .nav-item.active{color:#075e54;border-bottom-color:#075e54}
+/* Pages */
 .page{display:none;flex:1;overflow:hidden;flex-direction:column}
 .page.active{display:flex}
+/* Stats */
 .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;padding:20px 24px;flex-shrink:0}
 .stat{background:#fff;border-radius:12px;padding:18px 20px;border:1px solid #e8edf2;box-shadow:0 1px 4px rgba(0,0,0,.04)}
 .stat .n{font-size:30px;font-weight:700;margin:4px 0}
@@ -45,6 +50,7 @@ input:focus,select:focus,textarea:focus{border-color:#075e54}
 .stat.green .n{color:#16a34a}
 .stat.blue .n{color:#1d4ed8}
 .stat.orange .n{color:#c2410c}
+/* Patient list layout */
 .list-wrap{display:flex;flex:1;overflow:hidden}
 .patient-sidebar{width:300px;background:#fff;border-right:1px solid #e8edf2;display:flex;flex-direction:column;flex-shrink:0}
 .ps-header{padding:14px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between}
@@ -67,6 +73,7 @@ input:focus,select:focus,textarea:focus{border-color:#075e54}
 .sb-confirmed{background:#dcfce7;color:#16a34a}
 .sb-paused{background:#fef3c7;color:#d97706}
 .sb-completed{background:#f3f4f6;color:#374151}
+/* Chat/detail */
 .detail-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
 .detail-header{padding:13px 20px;background:#fff;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .dh-left{display:flex;align-items:center;gap:11px}
@@ -91,15 +98,19 @@ input:focus,select:focus,textarea:focus{border-color:#075e54}
 .reply-box textarea{flex:1;padding:9px 11px;border:1.5px solid #ddd;border-radius:9px;font-size:13px;resize:none;height:42px;max-height:100px}
 .reply-box button{padding:9px 18px;background:#075e54;color:#fff;border:none;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;flex-shrink:0}
 .reply-box button:disabled{opacity:.4;cursor:not-allowed}
+/* Info panel */
 .info-side{width:250px;background:#fff;border-left:1px solid #eee;overflow-y:auto;flex-shrink:0}
 .info-section{padding:16px;border-bottom:1px solid #f0f0f0}
 .info-section h4{font-size:11px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
 .info-row{display:flex;justify-content:space-between;font-size:12px;padding:4px 0}
 .info-row .k{color:#888}
 .info-row .v{font-weight:500;color:#111;text-align:right;max-width:130px;word-break:break-word}
+.edit-field{margin-bottom:10px}
+.edit-field label{font-size:11px;color:#888;display:block;margin-bottom:3px}
 .save-btn{width:100%;padding:9px;background:#075e54;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;margin-top:4px}
+/* Calendar */
 .cal-wrap{flex:1;overflow-y:auto;padding:20px 24px}
-.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px}
 .cal-header h2{font-size:17px;font-weight:600}
 .week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:24px}
 .day-card{background:#fff;border-radius:12px;padding:14px;border:1px solid #e8edf2;min-height:120px;cursor:pointer;transition:all .2s}
@@ -113,11 +124,22 @@ input:focus,select:focus,textarea:focus{border-color:#075e54}
 .slot-chip.free{background:#dcfce7;color:#16a34a}
 .slot-chip.booked{background:#fee2e2;color:#dc2626}
 .slot-chip.closed-tag{background:#f3f4f6;color:#999}
+/* Modals */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
-.modal{background:#fff;border-radius:16px;padding:28px;width:440px;max-width:95vw}
-.modal h3{font-size:16px;font-weight:700;margin-bottom:18px}
+.modal{background:#fff;border-radius:16px;padding:28px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto}
+.modal h3{font-size:16px;font-weight:700;margin-bottom:4px}
 .modal-footer{display:flex;gap:10px;margin-top:20px;justify-content:flex-end}
+/* Manual booking modal specifics */
+.modal-wide{width:500px}
+.modal-subtitle{font-size:12px;color:#888;margin-bottom:18px}
+.slot-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px}
+.slot-btn{padding:8px 6px;border:1.5px solid #e0e0e0;border-radius:8px;background:#fff;font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;text-align:center;color:#333}
+.slot-btn:hover{border-color:#075e54;background:#f0fdf4;color:#075e54}
+.slot-btn.selected{border-color:#075e54;background:#075e54;color:#fff}
+.slot-btn.disabled{background:#f9f9f9;color:#ccc;cursor:not-allowed;border-color:#f0f0f0}
+.no-slots-msg{font-size:13px;color:#aaa;padding:16px;text-align:center;background:#f9f9f9;border-radius:8px}
+/* Admin */
 .admin-wrap{flex:1;overflow-y:auto;padding:24px}
 .admin-card{background:#fff;border-radius:14px;padding:22px;margin-bottom:18px;border:1px solid #e8edf2;max-width:680px}
 .admin-card h3{font-size:14px;font-weight:700;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid #f0f0f0;color:#333}
@@ -196,15 +218,16 @@ input:focus,select:focus,textarea:focus{border-color:#075e54}
     <div class="cal-wrap">
       <div class="cal-header">
         <h2>📅 Appointment Calendar</h2>
-        <div style="display:flex;gap:10px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn btn-sm btn-blue" onclick="prevWeek()">← Previous</button>
           <button class="btn btn-sm btn-gray" onclick="goToday()">Today</button>
           <button class="btn btn-sm btn-blue" onclick="nextWeek()">Next →</button>
+          <button class="btn btn-sm btn-teal" onclick="openManualModal()">+ Book Manually</button>
         </div>
       </div>
       <div class="week-grid" id="week-grid"></div>
       <div id="day-appointments" style="background:#fff;border-radius:12px;padding:20px;border:1px solid #e8edf2">
-        <p style="color:#aaa;font-size:13px;text-align:center">Click a day to see appointments · Double-click to view details</p>
+        <p style="color:#aaa;font-size:13px;text-align:center">Click a day to see appointments</p>
       </div>
     </div>
   </div>
@@ -258,9 +281,11 @@ input:focus,select:focus,textarea:focus{border-color:#075e54}
         <option value="false">Closed — Doctor unavailable</option>
       </select>
     </div>
-    <div class="form-row">
-      <div class="field"><label>Start time</label><input type="time" id="av-start" value="09:00"></div>
-      <div class="field"><label>End time</label><input type="time" id="av-end" value="17:00"></div>
+    <div id="av-times">
+      <div class="form-row">
+        <div class="field"><label>Start time</label><input type="time" id="av-start" value="09:00"></div>
+        <div class="field"><label>End time</label><input type="time" id="av-end" value="17:00"></div>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-gray" onclick="closeModal()">Cancel</button>
@@ -270,28 +295,61 @@ input:focus,select:focus,textarea:focus{border-color:#075e54}
 </div>
 
 <!-- MANUAL BOOKING MODAL -->
-<div class="modal-overlay" id="book-modal">
-  <div class="modal">
+<div class="modal-overlay" id="manual-modal">
+  <div class="modal modal-wide">
     <h3>📋 Book Appointment Manually</h3>
-    <p id="book-modal-date" style="font-size:13px;color:#666;margin-bottom:16px"></p>
-    <div class="field">
-      <label>Patient WhatsApp Number</label>
-      <input type="text" id="bk-phone" placeholder="e.g. 923001234567 (no + or spaces)">
+    <p class="modal-subtitle">Walk-in or phone booking by staff — patient will be notified via WhatsApp</p>
+
+    <div class="form-row">
+      <div class="field">
+        <label>Patient Full Name *</label>
+        <input type="text" id="mb-name" placeholder="e.g. Ahmed Khan">
+      </div>
+      <div class="field">
+        <label>WhatsApp Number *</label>
+        <input type="text" id="mb-phone" placeholder="923001234567">
+      </div>
     </div>
-    <div class="field">
-      <label>Patient Name</label>
-      <input type="text" id="bk-name" placeholder="Full name">
+
+    <div class="form-row">
+      <div class="field">
+        <label>Age</label>
+        <input type="number" id="mb-age" placeholder="e.g. 35" min="1" max="120">
+      </div>
+      <div class="field">
+        <label>Gender</label>
+        <select id="mb-gender">
+          <option value="">Select…</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
     </div>
+
     <div class="field">
-      <label>Available Time Slot</label>
-      <select id="bk-slot">
-        <option value="">Loading slots…</option>
-      </select>
+      <label>Select Date *</label>
+      <input type="date" id="mb-date" onchange="loadManualSlots()">
     </div>
-    <div id="bk-msg" style="display:none" class="fmsg"></div>
+
+    <div class="field">
+      <label>Available Time Slots *</label>
+      <div id="mb-slots-wrap">
+        <div class="no-slots-msg">Pick a date above to see available slots</div>
+      </div>
+      <input type="hidden" id="mb-slot-value">
+    </div>
+
+    <div class="field">
+      <label>Notes (optional)</label>
+      <textarea id="mb-notes" rows="2" placeholder="Reason for visit, referred by, special instructions…" style="resize:none"></textarea>
+    </div>
+
+    <div id="mb-msg" style="display:none" class="fmsg"></div>
+
     <div class="modal-footer">
-      <button class="btn btn-gray" onclick="closeBookModal()">Cancel</button>
-      <button class="btn btn-primary" id="bk-confirm-btn" onclick="submitManualBooking()">Confirm Booking</button>
+      <button class="btn btn-gray" onclick="closeManualModal()">Cancel</button>
+      <button class="btn btn-primary" id="mb-submit-btn" onclick="submitManualBooking()">Book Appointment</button>
     </div>
   </div>
 </div>
@@ -304,7 +362,6 @@ let uname = localStorage.getItem('uname')||'';
 let patients=[], activePhone=null, timer=null;
 let calWeekStart = getMonday(new Date());
 let modalDate = null;
-let manualBookingDate = null;
 
 window.onload = () => { if(token) boot(); };
 
@@ -425,6 +482,7 @@ async function openPatient(phone, el) {
   const p = await api(`/api/patients/${encodeURIComponent(phone)}`);
   if(!p) return;
 
+  // Render info side panel
   const infoSide=document.getElementById('info-side');
   infoSide.style.display='';
   infoSide.innerHTML=`
@@ -449,7 +507,8 @@ async function openPatient(phone, el) {
       ${p.appointmentId?`
         <div class="info-row"><span class="k">Date</span><span class="v">${new Date(p.appointmentId.date).toLocaleDateString('en-PK')}</span></div>
         <div class="info-row"><span class="k">Time</span><span class="v">${p.appointmentId.timeSlot}</span></div>
-      `:'<div style="font-size:12px;color:#aaa;padding:4px 0">No appointment yet</div>'}
+        ${p.appointmentId.bookedBy?`<div class="info-row"><span class="k">Booked by</span><span class="v">${p.appointmentId.bookedBy}</span></div>`:''}
+      `:'<div style="font-size:12px;color:#aaa">No appointment yet</div>'}
     </div>
     <div class="info-section">
       <h4>Actions</h4>
@@ -462,6 +521,7 @@ async function openPatient(phone, el) {
       <button class="btn btn-gray btn-sm" style="width:100%" onclick="genPDF('${phone}')">🔄 Refresh PDF</button>
     </div>`;
 
+  // Render chat area
   const detail=document.getElementById('detail-area');
   const bubbles=(p.messages||[]).map(m=>`
     <div class="msg ${m.role}">
@@ -537,12 +597,16 @@ function goToday(){calWeekStart=getMonday(new Date());renderCalendar();}
 async function renderCalendar() {
   const grid=document.getElementById('week-grid');
   grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:#aaa;font-size:13px;padding:20px">Loading…</div>';
+
   const availData = await api('/api/availability');
   if(!availData) return;
+
   const availMap={};
   availData.forEach(a=>{ availMap[new Date(a.date).toDateString()]=a; });
+
   const today=new Date(); today.setHours(0,0,0,0);
   grid.innerHTML='';
+
   for(let i=0;i<7;i++){
     const d=new Date(calWeekStart); d.setDate(d.getDate()+i);
     const avail=availMap[d.toDateString()];
@@ -550,6 +614,7 @@ async function renderCalendar() {
     const isPast=d<today;
     const freeSlots=avail?.slots?.filter(s=>!s.isBooked).length||0;
     const bookedSlots=avail?.slots?.filter(s=>s.isBooked).length||0;
+
     const card=document.createElement('div');
     card.className=`day-card${isToday?' today':''}${avail&&!avail.isOpen?' closed':''}`;
     card.innerHTML=`
@@ -560,8 +625,10 @@ async function renderCalendar() {
           ${bookedSlots?`<span class="slot-chip booked">${bookedSlots} booked</span>`:''}`
         :`<span class="slot-chip closed-tag">${avail?'Closed':'Not set'}</span>`
       }`;
-    if(!isPast) { card.onclick=()=>openDayModal(d, avail); }
-    card.ondblclick=(e)=>{ e.stopPropagation(); showDayAppointments(d); };
+    if(!isPast) {
+      card.onclick=()=>openDayModal(d, avail);
+    }
+    card.ondblclick=()=>showDayAppointments(d);
     grid.appendChild(card);
   }
 }
@@ -577,6 +644,7 @@ function openDayModal(date, existing) {
   }
   document.getElementById('avail-modal').classList.add('open');
 }
+
 function closeModal(){ document.getElementById('avail-modal').classList.remove('open'); }
 
 async function saveAvailability() {
@@ -595,35 +663,30 @@ async function showDayAppointments(date) {
   const dateStr=date.toISOString().split('T')[0];
   const appts = await api(`/api/appointments?date=${dateStr}`);
   const el=document.getElementById('day-appointments');
-
+  if(!appts?.length){
+    el.innerHTML=`<p style="color:#aaa;font-size:13px;text-align:center">No appointments on ${date.toLocaleDateString('en-PK')}</p>`;
+    return;
+  }
   el.innerHTML=`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-      <h3 style="font-size:14px;font-weight:600">
-        Appointments — ${date.toLocaleDateString('en-PK',{weekday:'long',month:'long',day:'numeric'})}
-      </h3>
-      <button class="btn btn-primary btn-sm" onclick="openManualBooking('${date.toISOString()}')">
-        + Book Slot Manually
-      </button>
-    </div>
-    ${!appts?.length
-      ? '<p style="color:#aaa;font-size:13px;text-align:center;padding:20px 0">No appointments this day yet</p>'
-      : appts.map(a=>`
-        <div style="display:flex;align-items:center;padding:10px 0;border-bottom:1px solid #f5f5f5;gap:12px">
-          <div style="background:#075e54;color:#fff;padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;white-space:nowrap">
-            ${a.timeSlot}
-          </div>
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:500">${a.patientName||a.patientPhone}</div>
-            <div style="font-size:11px;color:#aaa">${a.patientPhone}</div>
-          </div>
-          <span style="font-size:11px;padding:3px 9px;border-radius:10px;background:#dcfce7;color:#16a34a">${a.status}</span>
-          ${role==='admin'?`<button class="btn btn-sm btn-red" onclick="cancelAppt('${a._id}','${a.patientName||a.patientPhone}')">Cancel</button>`:''}
-        </div>`).join('')
-    }
-    ${role==='admin' && appts?.length ? `
-      <button class="btn btn-red" style="margin-top:14px;width:100%" onclick="cancelDay('${dateStr}')">
-        ⚠️ Cancel All Appointments This Day
-      </button>` : ''}`;
+    <h3 style="font-size:14px;font-weight:600;margin-bottom:14px">
+      Appointments — ${date.toLocaleDateString('en-PK',{weekday:'long',month:'long',day:'numeric'})}
+    </h3>
+    ${appts.map(a=>`
+      <div style="display:flex;align-items:center;padding:10px 0;border-bottom:1px solid #f5f5f5;gap:12px">
+        <div style="background:#075e54;color:#fff;padding:6px 12px;border-radius:8px;font-size:13px;font-weight:600;white-space:nowrap">
+          ${a.timeSlot}
+        </div>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:500">${a.patientName||a.patientPhone}</div>
+          <div style="font-size:11px;color:#aaa">${a.patientPhone}${a.bookedBy?' · Booked by '+a.bookedBy:''}</div>
+          ${a.notes?`<div style="font-size:11px;color:#888;margin-top:2px">📝 ${a.notes}</div>`:''}
+        </div>
+        <span style="font-size:11px;padding:3px 9px;border-radius:10px;background:#dcfce7;color:#16a34a">${a.status}</span>
+        <button class="btn btn-sm btn-red" onclick="cancelAppt('${a._id}','${a.patientName||a.patientPhone}')">Cancel</button>
+      </div>`).join('')}
+    ${role==='admin'?`<button class="btn btn-red" style="margin-top:14px;width:100%" onclick="cancelDay('${dateStr}')">
+      ⚠️ Cancel All Appointments This Day
+    </button>`:''}`;
 }
 
 async function cancelAppt(id, name) {
@@ -631,8 +694,9 @@ async function cancelAppt(id, name) {
   const reason=prompt('Reason for cancellation:','Doctor unavailable');
   if(reason===null) return;
   const r=await api(`/api/appointments/${id}/cancel`,{method:'POST',body:JSON.stringify({reason})});
-  alert(r?.message||'Cancelled'); renderCalendar();
+  alert(r?.message||'Cancelled');renderCalendar();
 }
+
 async function cancelDay(dateStr) {
   if(!confirm('Cancel ALL appointments this day? All patients will be notified.')) return;
   const reason=prompt('Reason:','Doctor unavailable today');
@@ -642,66 +706,87 @@ async function cancelDay(dateStr) {
 }
 
 // ── Manual Booking ────────────────────────────────────────────────────────────
-async function openManualBooking(dateISO) {
-  manualBookingDate = dateISO;
-  const date = new Date(dateISO);
+function openManualModal() {
+  // Reset all fields
+  document.getElementById('mb-name').value='';
+  document.getElementById('mb-phone').value='';
+  document.getElementById('mb-age').value='';
+  document.getElementById('mb-gender').value='';
+  document.getElementById('mb-notes').value='';
+  document.getElementById('mb-slot-value').value='';
+  document.getElementById('mb-msg').style.display='none';
+  document.getElementById('mb-slots-wrap').innerHTML=
+    '<div class="no-slots-msg">Pick a date above to see available slots</div>';
 
-  document.getElementById('book-modal-date').textContent =
-    date.toLocaleDateString('en-PK', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
-  document.getElementById('bk-phone').value = '';
-  document.getElementById('bk-name').value  = '';
-  document.getElementById('bk-msg').style.display = 'none';
-  document.getElementById('bk-confirm-btn').disabled = false;
-  document.getElementById('bk-confirm-btn').textContent = 'Confirm Booking';
+  // Set min date to today
+  const today=new Date().toISOString().split('T')[0];
+  document.getElementById('mb-date').min=today;
+  document.getElementById('mb-date').value='';
 
-  // Load available free slots for this date
-  const dateStr = date.toISOString().split('T')[0];
-  const data = await api(`/api/availability/slots/${dateStr}`);
-  const select = document.getElementById('bk-slot');
+  const btn=document.getElementById('mb-submit-btn');
+  btn.disabled=false; btn.textContent='Book Appointment';
 
-  if (!data?.slots?.length) {
-    select.innerHTML = '<option value="">No free slots available for this date</option>';
-  } else {
-    select.innerHTML = data.slots.map(s => `<option value="${s}">${s}</option>`).join('');
-  }
-
-  document.getElementById('book-modal').classList.add('open');
+  document.getElementById('manual-modal').classList.add('open');
 }
 
-function closeBookModal() {
-  document.getElementById('book-modal').classList.remove('open');
+function closeManualModal() {
+  document.getElementById('manual-modal').classList.remove('open');
+}
+
+async function loadManualSlots() {
+  const date=document.getElementById('mb-date').value;
+  const wrap=document.getElementById('mb-slots-wrap');
+  document.getElementById('mb-slot-value').value='';
+  if(!date){ wrap.innerHTML='<div class="no-slots-msg">Pick a date above to see available slots</div>'; return; }
+
+  wrap.innerHTML='<div class="no-slots-msg">Loading slots…</div>';
+  const data=await api(`/api/availability/${date}/slots`);
+
+  if(!data||!data.isOpen||!data.slots||!data.slots.length){
+    wrap.innerHTML=`<div class="no-slots-msg">${data&&!data.isOpen?'Doctor is not available on this day':'No free slots available for this date — set availability first'}</div>`;
+    return;
+  }
+
+  wrap.innerHTML=`<div class="slot-grid">${data.slots.map(s=>
+    `<button class="slot-btn" onclick="selectSlot(this,'${s}')">${s}</button>`
+  ).join('')}</div>`;
+}
+
+function selectSlot(btn, time) {
+  document.querySelectorAll('.slot-btn').forEach(b=>b.classList.remove('selected'));
+  btn.classList.add('selected');
+  document.getElementById('mb-slot-value').value=time;
 }
 
 async function submitManualBooking() {
-  const phone    = document.getElementById('bk-phone').value.trim();
-  const name     = document.getElementById('bk-name').value.trim();
-  const timeSlot = document.getElementById('bk-slot').value;
+  const name  = document.getElementById('mb-name').value.trim();
+  const phone = document.getElementById('mb-phone').value.trim();
+  const date  = document.getElementById('mb-date').value;
+  const slot  = document.getElementById('mb-slot-value').value;
+  const age   = document.getElementById('mb-age').value;
+  const gender= document.getElementById('mb-gender').value;
+  const notes = document.getElementById('mb-notes').value.trim();
 
-  if (!phone) { showFMsg('bk-msg', 'err', 'Patient phone number is required'); return; }
-  if (!timeSlot) { showFMsg('bk-msg', 'err', 'Please select a time slot'); return; }
+  if(!name){ showFMsg('mb-msg','err','Patient name is required'); return; }
+  if(!phone){ showFMsg('mb-msg','err','WhatsApp number is required'); return; }
+  if(!date){ showFMsg('mb-msg','err','Please select a date'); return; }
+  if(!slot){ showFMsg('mb-msg','err','Please select a time slot'); return; }
 
-  const btn = document.getElementById('bk-confirm-btn');
-  btn.disabled = true;
-  btn.textContent = 'Booking…';
+  const btn=document.getElementById('mb-submit-btn');
+  btn.disabled=true; btn.textContent='Booking…';
 
-  const result = await api('/api/appointments/manual-book', {
-    method: 'POST',
-    body: JSON.stringify({ patientPhone: phone, patientName: name, date: manualBookingDate, timeSlot })
+  const r=await api('/api/appointments/manual',{
+    method:'POST',
+    body:JSON.stringify({ patientName:name, patientPhone:phone, date, timeSlot:slot, age:age||null, gender:gender||null, notes })
   });
 
-  btn.disabled = false;
-  btn.textContent = 'Confirm Booking';
+  btn.disabled=false; btn.textContent='Book Appointment';
 
-  if (result?.ok) {
-    showFMsg('bk-msg', 'ok', `✅ Booked! WhatsApp confirmation sent to ${phone}`);
-    setTimeout(() => {
-      closeBookModal();
-      renderCalendar();
-      showDayAppointments(new Date(manualBookingDate));
-      loadStats();
-    }, 2000);
+  if(r?.ok){
+    showFMsg('mb-msg','ok','✅ Appointment booked! Patient notified via WhatsApp.');
+    setTimeout(()=>{ closeManualModal(); renderCalendar(); loadPatients(true); loadStats(); },2000);
   } else {
-    showFMsg('bk-msg', 'err', result?.message || 'Booking failed. Please try again.');
+    showFMsg('mb-msg','err', r?.message||'Booking failed. Please try again.');
   }
 }
 
@@ -758,7 +843,7 @@ async function changeMyPwd() {
 function showFMsg(id,type,text){
   const el=document.getElementById(id);
   el.textContent=text;el.className='fmsg '+type;el.style.display='block';
-  setTimeout(()=>el.style.display='none',5000);
+  setTimeout(()=>el.style.display='none',4000);
 }
 function ago(date){
   const s=Math.floor((Date.now()-date)/1000);
@@ -769,9 +854,8 @@ function ago(date){
 }
 function to24h(t12){
   if(!t12) return '09:00';
-  const parts=t12.split(' ');
-  const ampm=parts[1];
-  let [h,m]=parts[0].split(':').map(Number);
+  const [time,ampm]=t12.split(' ');
+  let [h,m]=time.split(':').map(Number);
   if(ampm==='PM'&&h!==12) h+=12;
   if(ampm==='AM'&&h===12) h=0;
   return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
