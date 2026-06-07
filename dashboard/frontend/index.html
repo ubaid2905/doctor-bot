@@ -283,8 +283,6 @@ input:focus,select:focus,textarea:focus{border-color:#075e54}
   </div>
 </div>
 
-
-
 <script>
 // ── State ─────────────────────────────────────────────────────────────────────
 let token = localStorage.getItem('token')||'';
@@ -322,7 +320,6 @@ async function login() {
   localStorage.setItem('token',token);localStorage.setItem('role',role);localStorage.setItem('uname',uname);
   boot();
 }
-
 
 function logout() {
   localStorage.clear();token='';role='';uname='';
@@ -599,9 +596,9 @@ async function showDayAppointments(date) {
     el.innerHTML=`<p style="color:#aaa;font-size:13px;text-align:center">No appointments on ${date.toLocaleDateString('en-PK')}</p>`;
     return;
   }
- el.innerHTML=`
+  el.innerHTML=`
     <h3 style="font-size:14px;font-weight:600;margin-bottom:14px">
-      Appointments — ${date.toLocaleDateString(...)}
+      Appointments — ${date.toLocaleDateString('en-PK',{weekday:'long',month:'long',day:'numeric'})}
     </h3>
     ${appts.map(a=>`
       <div style="display:flex;align-items:center;padding:10px 0;border-bottom:1px solid #f5f5f5;gap:12px">
