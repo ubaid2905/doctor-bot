@@ -22,7 +22,7 @@ app.use(express.static(path.join(__dirname, 'dashboard/frontend')));
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     console.log('✅ MongoDB connected');
-    startSchedulers(); // start cron jobs after DB connects
+    startSchedulers();
   })
   .catch(err => { console.error('❌ MongoDB:', err.message); process.exit(1); });
 
@@ -56,18 +56,15 @@ function generatePatientPDF(patient) {
     doc.on('end', () => resolve(Buffer.concat(chunks).toString('base64')));
     doc.on('error', reject);
 
-    // Header
     doc.fontSize(20).fillColor('#075e54')
        .text('PATIENT MEDICAL HISTORY', { align: 'center' });
     doc.moveDown(0.5);
     doc.fontSize(12).fillColor('#666')
        .text(`Generated: ${new Date().toLocaleString('en-PK')}`, { align: 'center' });
-    
     doc.moveDown();
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke('#075e54');
     doc.moveDown();
 
-    // Personal Info
     doc.fontSize(14).fillColor('#075e54').text('PERSONAL INFORMATION');
     doc.moveDown(0.3);
     doc.fontSize(11).fillColor('#111');
@@ -77,26 +74,20 @@ function generatePatientPDF(patient) {
     doc.text(`Blood Group:  ${patient.bloodGroup || 'Not provided'}`);
     doc.text(`Phone:        ${patient.phoneNumber}`);
     doc.text(`First Visit:  ${new Date(patient.firstSeen).toLocaleDateString('en-PK')}`);
-
     doc.moveDown();
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke('#ddd');
     doc.moveDown();
 
-    // Symptoms
     doc.fontSize(14).fillColor('#075e54').text('PRESENTING SYMPTOMS');
     doc.moveDown(0.3);
     doc.fontSize(11).fillColor('#111');
     if (patient.symptoms?.length) {
       patient.symptoms.forEach(s => doc.text(`  • ${s}`));
-    } else {
-      doc.text('  Not recorded');
-    }
-
+    } else { doc.text('  Not recorded'); }
     doc.moveDown();
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke('#ddd');
     doc.moveDown();
 
-    // Medical History
     doc.fontSize(14).fillColor('#075e54').text('MEDICAL HISTORY');
     doc.moveDown(0.3);
     doc.fontSize(11).fillColor('#111');
@@ -104,24 +95,20 @@ function generatePatientPDF(patient) {
     if (patient.existingConditions?.length) {
       patient.existingConditions.forEach(c => doc.text(`  • ${c}`));
     } else { doc.text('  None reported'); }
-
     doc.moveDown(0.5);
     doc.text('Current Medications:');
     if (patient.currentMedication?.length) {
       patient.currentMedication.forEach(m => doc.text(`  • ${m}`));
     } else { doc.text('  None'); }
-
     doc.moveDown(0.5);
     doc.text('Allergies:');
     if (patient.allergies?.length) {
       patient.allergies.forEach(a => doc.text(`  • ${a}`));
     } else { doc.text('  None reported'); }
-
     doc.moveDown();
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke('#ddd');
     doc.moveDown();
 
-    // Appointment
     doc.fontSize(14).fillColor('#075e54').text('APPOINTMENT DETAILS');
     doc.moveDown(0.3);
     doc.fontSize(11).fillColor('#111');
@@ -130,12 +117,11 @@ function generatePatientPDF(patient) {
     } else {
       doc.text('No appointment booked yet');
     }
-
     doc.end();
   });
 }
 
-// ── Helper: get available slots for bot ──────────────────────────────────────
+// ── Helper: get available slots text for bot ──────────────────────────────────
 async function getAvailableSlotsText() {
   const today = new Date();
   today.setHours(0,0,0,0);
@@ -164,7 +150,7 @@ async function getAvailableSlotsText() {
   return text;
 }
 
-// ── Helper: book a slot ───────────────────────────────────────────────────────
+// ── Helper: book a slot (atomic, prevents double booking) ─────────────────────
 async function bookSlot(patient, chosenSlotText) {
   const today = new Date();
   today.setHours(0,0,0,0);
@@ -177,76 +163,81 @@ async function bookSlot(patient, chosenSlotText) {
 
   for (const av of availabilities) {
     for (const slot of av.slots) {
-      if (!slot.isBooked && chosenSlotText.includes(slot.time)) {
-        // Book the slot
-        slot.isBooked     = true;
-        slot.patientPhone = patient.phoneNumber;
-        slot.patientName  = patient.name;
-        await av.save();
-
-        // Create appointment record
-        const appt = await Appointment.create({
-          patientPhone: patient.phoneNumber,
-          patientName:  patient.name,
-          date:         av.date,
-          timeSlot:     slot.time,
-          status:       'confirmed'
-        });
-
-        // Generate PDF
-        const pdfBase64 = await generatePatientPDF(patient);
-
-        // Update patient record
-        await Patient.findOneAndUpdate(
-          { phoneNumber: patient.phoneNumber },
-          {
-            $set: {
-              appointmentId: appt._id,
-              status:        'confirmed',
-              pdfGenerated:  true,
-              pdfData:       pdfBase64
-            }
-          }
+      const slotMatches =
+        chosenSlotText.toLowerCase().includes(slot.time.toLowerCase()) &&
+        (
+          chosenSlotText.toLowerCase().includes(
+            av.date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase()
+          ) ||
+          chosenSlotText.includes(
+            av.date.toLocaleDateString('en-PK', { day: 'numeric', month: 'numeric' })
+          ) ||
+          chosenSlotText.includes(av.dayLabel?.split(',')[0]?.toLowerCase() || '')
         );
 
-        return {
-          success: true,
-          date:    av.dayLabel,
-          time:    slot.time,
-          apptId:  appt._id
-        };
+      if (!slotMatches) continue;
+
+      // Re-fetch fresh to prevent race condition
+      const freshAv   = await Availability.findById(av._id);
+      const freshSlot = freshAv.slots.find(s => s.time === slot.time);
+      if (!freshSlot || freshSlot.isBooked) {
+        return { success: false, reason: 'taken' };
       }
+
+      // Atomic update — only succeeds if still not booked
+      const updated = await Availability.findOneAndUpdate(
+        {
+          _id:              av._id,
+          'slots.time':     slot.time,
+          'slots.isBooked': false
+        },
+        {
+          $set: {
+            'slots.$.isBooked':     true,
+            'slots.$.patientPhone': patient.phoneNumber,
+            'slots.$.patientName':  patient.name
+          }
+        },
+        { new: true }
+      );
+
+      if (!updated) return { success: false, reason: 'taken' };
+
+      const appt = await Appointment.create({
+        patientPhone: patient.phoneNumber,
+        patientName:  patient.name,
+        date:         av.date,
+        timeSlot:     slot.time,
+        status:       'confirmed'
+      });
+
+      const pdfBase64 = await generatePatientPDF(patient);
+
+      await Patient.findOneAndUpdate(
+        { phoneNumber: patient.phoneNumber },
+        { $set: { appointmentId: appt._id, status: 'confirmed', pdfGenerated: true, pdfData: pdfBase64 } }
+      );
+
+      return { success: true, date: av.dayLabel, time: slot.time, apptId: appt._id };
     }
   }
-  return { success: false };
+  return { success: false, reason: 'not_found' };
 }
 
 // ── Helper: extract patient info from conversation ────────────────────────────
 function extractPatientInfo(messages) {
-  const info = {
-    symptoms: [], existingConditions: [],
-    currentMedication: [], allergies: []
-  };
-
-  // Simple extraction — looks for answers after bot questions
+  const info = { symptoms: [], existingConditions: [], currentMedication: [], allergies: [] };
   messages.forEach((msg, i) => {
     if (msg.role !== 'user') return;
     const prev = messages[i-1];
     if (!prev || prev.role !== 'bot') return;
-
     const q = prev.content.toLowerCase();
     const a = msg.content.trim();
-
-    if (q.includes('full name'))
-      info.name = a;
-    else if (q.includes('how old'))
-      info.age = parseInt(a) || a;
-    else if (q.includes('gender'))
-      info.gender = a;
-    else if (q.includes('blood group'))
-      info.bloodGroup = a;
-    else if (q.includes('symptoms'))
-      info.symptoms = [a];
+    if (q.includes('full name'))       info.name = a;
+    else if (q.includes('how old'))    info.age = parseInt(a) || a;
+    else if (q.includes('gender'))     info.gender = a;
+    else if (q.includes('blood group'))info.bloodGroup = a;
+    else if (q.includes('symptoms'))   info.symptoms = [a];
     else if (q.includes('existing medical') || q.includes('conditions'))
       info.existingConditions = a.toLowerCase() === 'no' || a.toLowerCase() === 'none' ? [] : [a];
     else if (q.includes('medication'))
@@ -254,12 +245,11 @@ function extractPatientInfo(messages) {
     else if (q.includes('allergies'))
       info.allergies = a.toLowerCase() === 'no' || a.toLowerCase() === 'none' ? [] : [a];
   });
-
   return info;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// SETUP ROUTE — create admin once
+// SETUP
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 app.post('/api/setup', async (req, res) => {
   try {
@@ -269,9 +259,7 @@ app.post('/api/setup', async (req, res) => {
     const admin = new User({ username, password, role: 'admin' });
     await admin.save();
     res.json({ message: `Admin "${username}" created. Setup locked.` });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -281,8 +269,7 @@ app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     const user = await User.findOne({ username: username?.toLowerCase().trim() });
-    if (!user || !user.isActive)
-      return res.status(401).json({ message: 'Invalid credentials' });
+    if (!user || !user.isActive) return res.status(401).json({ message: 'Invalid credentials' });
     const match = await user.comparePassword(password);
     if (!match) return res.status(401).json({ message: 'Invalid credentials' });
     user.lastLogin = new Date(); await user.save();
@@ -306,7 +293,7 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// TEAM MANAGEMENT
+// TEAM
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 app.get('/api/team', requireAuth, requireAdmin, async (req, res) => {
   const agents = await User.find({ role: 'agent' }).select('-password').sort({ createdAt: -1 });
@@ -340,13 +327,13 @@ app.post('/api/team/:username/reset-password', requireAuth, requireAdmin, async 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 app.get('/api/stats', requireAuth, async (req, res) => {
   try {
-    const today = new Date(); today.setHours(0,0,0,0);
+    const today    = new Date(); today.setHours(0,0,0,0);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
-    const total         = await Patient.countDocuments();
-    const todayAppts    = await Appointment.countDocuments({ date: { $gte: today, $lt: tomorrow }, status: 'confirmed' });
-    const totalAppts    = await Appointment.countDocuments({ status: 'confirmed' });
-    const pendingAppts  = await Appointment.countDocuments({ status: 'pending' });
-    const newToday      = await Patient.countDocuments({ firstSeen: { $gte: today } });
+    const total        = await Patient.countDocuments();
+    const todayAppts   = await Appointment.countDocuments({ date: { $gte: today, $lt: tomorrow }, status: 'confirmed' });
+    const totalAppts   = await Appointment.countDocuments({ status: 'confirmed' });
+    const pendingAppts = await Appointment.countDocuments({ status: 'pending' });
+    const newToday     = await Patient.countDocuments({ firstSeen: { $gte: today } });
     res.json({ total, todayAppts, totalAppts, pendingAppts, newToday });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -360,15 +347,11 @@ app.get('/api/patients', requireAuth, async (req, res) => {
     .sort({ lastActive: -1 });
   res.json(patients);
 });
-
 app.get('/api/patients/:phone', requireAuth, async (req, res) => {
-  const p = await Patient.findOne({ phoneNumber: req.params.phone })
-    .populate('appointmentId');
+  const p = await Patient.findOne({ phoneNumber: req.params.phone }).populate('appointmentId');
   if (!p) return res.status(404).json({ message: 'Patient not found' });
   res.json(p);
 });
-
-// Download patient PDF
 app.get('/api/patients/:phone/pdf', requireAuth, async (req, res) => {
   const p = await Patient.findOne({ phoneNumber: req.params.phone });
   if (!p?.pdfData) return res.status(404).json({ message: 'PDF not generated yet' });
@@ -377,19 +360,14 @@ app.get('/api/patients/:phone/pdf', requireAuth, async (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="${p.name || p.phoneNumber}-history.pdf"`);
   res.send(buffer);
 });
-
-// Regenerate PDF manually
 app.post('/api/patients/:phone/generate-pdf', requireAuth, async (req, res) => {
   const p = await Patient.findOne({ phoneNumber: req.params.phone });
   if (!p) return res.status(404).json({ message: 'Patient not found' });
   const pdfBase64 = await generatePatientPDF(p);
-  await Patient.findOneAndUpdate({ phoneNumber: req.params.phone }, {
-    $set: { pdfGenerated: true, pdfData: pdfBase64 }
-  });
+  await Patient.findOneAndUpdate({ phoneNumber: req.params.phone },
+    { $set: { pdfGenerated: true, pdfData: pdfBase64 } });
   res.json({ message: 'PDF generated' });
 });
-
-// Pause/resume bot for patient
 app.post('/api/patients/:phone/pause', requireAuth, async (req, res) => {
   await Patient.findOneAndUpdate({ phoneNumber: req.params.phone },
     { $set: { isPaused: true, pausedBy: req.user.username } });
@@ -400,8 +378,6 @@ app.post('/api/patients/:phone/resume', requireAuth, async (req, res) => {
     { $set: { isPaused: false, pausedBy: null } });
   res.json({ ok: true });
 });
-
-// Manual reply
 app.post('/api/patients/:phone/reply', requireAuth, async (req, res) => {
   try {
     const { message } = req.body;
@@ -430,113 +406,166 @@ app.get('/api/appointments', requireAuth, async (req, res) => {
   res.json(appts);
 });
 
-// Cancel appointment + notify all affected patients
 app.post('/api/appointments/:id/cancel', requireAuth, async (req, res) => {
   try {
     const appt = await Appointment.findById(req.params.id);
     if (!appt) return res.status(404).json({ message: 'Not found' });
-
-    appt.status      = 'cancelled';
-    appt.cancelledAt = new Date();
+    appt.status = 'cancelled'; appt.cancelledAt = new Date();
     appt.cancelledBy = req.user.username;
     appt.cancelReason = req.body.reason || 'Doctor unavailable';
     await appt.save();
-
-    // Free the slot in availability
     await Availability.updateOne(
       { 'slots.patientPhone': appt.patientPhone },
       { $set: { 'slots.$.isBooked': false, 'slots.$.patientPhone': null, 'slots.$.patientName': null } }
     );
-
-    // Update patient status
     await Patient.findOneAndUpdate(
       { phoneNumber: appt.patientPhone },
       { $set: { status: 'cancelled', appointmentId: null } }
     );
-
-    // Notify patient via WhatsApp
     await sendTextMessage(appt.patientPhone,
       `Dear ${appt.patientName},\n\n` +
-      `We regret to inform you that your appointment scheduled for:\n` +
-      `📅 ${appt.date.toLocaleDateString('en-PK')}\n` +
-      `⏰ ${appt.timeSlot}\n\n` +
-      `has been cancelled due to: ${appt.cancelReason}\n\n` +
-      `We sincerely apologize for the inconvenience.\n` +
-      `Please reply to this message to reschedule your appointment.\n\n` +
-      `For urgent matters, please call: ${process.env.CLINIC_PHONE || '+92-300-0000000'}`
+      `Your appointment on ${appt.date.toLocaleDateString('en-PK')} at ${appt.timeSlot} ` +
+      `has been cancelled.\n\nReason: ${appt.cancelReason}\n\n` +
+      `Please reply to reschedule.\n\n` +
+      `📞 ${process.env.CLINIC_PHONE || '+92-300-0000000'}`
     );
-
     res.json({ ok: true, message: 'Appointment cancelled and patient notified' });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// Cancel entire day — notify ALL patients that day
-app.post('/api/availability/:date/cancel-day', requireAuth, requireAdmin, async (req, res) => {
+// ── NEW: Manual booking from dashboard ────────────────────────────────────────
+app.post('/api/appointments/manual-book', requireAuth, async (req, res) => {
   try {
-    const date = new Date(req.params.date);
-    date.setHours(0,0,0,0);
-    const nextDay = new Date(date); nextDay.setDate(nextDay.getDate() + 1);
+    const { patientPhone, patientName, date, timeSlot } = req.body;
 
-    // Get all appointments that day
-    const appointments = await Appointment.find({
-      date:   { $gte: date, $lt: nextDay },
-      status: 'confirmed'
+    if (!patientPhone || !date || !timeSlot)
+      return res.status(400).json({ message: 'Phone, date and time slot are required' });
+
+    const d = new Date(date); d.setHours(0,0,0,0);
+    const nextDay = new Date(d); nextDay.setDate(nextDay.getDate() + 1);
+
+    const av = await Availability.findOne({ date: { $gte: d, $lt: nextDay }, isOpen: true });
+    if (!av)
+      return res.status(404).json({ message: 'No availability set for this date. Set availability in the Calendar tab first.' });
+
+    const slot = av.slots.find(s => s.time === timeSlot);
+    if (!slot)
+      return res.status(404).json({ message: 'Slot not found for this date' });
+    if (slot.isBooked)
+      return res.status(400).json({ message: `${timeSlot} is already booked by another patient` });
+
+    // Atomic update — prevents double booking
+    const updated = await Availability.findOneAndUpdate(
+      { _id: av._id, 'slots.time': timeSlot, 'slots.isBooked': false },
+      { $set: {
+        'slots.$.isBooked':     true,
+        'slots.$.patientPhone': patientPhone,
+        'slots.$.patientName':  patientName || patientPhone
+      }},
+      { new: true }
+    );
+
+    if (!updated)
+      return res.status(400).json({ message: 'Slot was just booked by someone else. Please refresh and try again.' });
+
+    const appt = await Appointment.create({
+      patientPhone,
+      patientName: patientName || patientPhone,
+      date:        d,
+      timeSlot,
+      status:      'confirmed'
     });
 
-    // Cancel all and notify each patient
+    // Update patient record if they exist in the system
+    await Patient.findOneAndUpdate(
+      { phoneNumber: patientPhone },
+      { $set: { appointmentId: appt._id, status: 'confirmed' } }
+    );
+
+    // Send WhatsApp confirmation to patient
+    try {
+      await sendTextMessage(patientPhone,
+        `✅ Appointment Confirmed!\n\n` +
+        `👤 Patient: ${patientName || patientPhone}\n` +
+        `📅 Date: ${d.toLocaleDateString('en-PK', { weekday:'long', month:'long', day:'numeric' })}\n` +
+        `⏰ Time: ${timeSlot}\n` +
+        `👨‍⚕️ Doctor: Dr. ${process.env.DOCTOR_NAME || 'Doctor'}\n` +
+        `📍 ${process.env.CLINIC_ADDRESS || 'Clinic'}\n` +
+        `💰 Fee: PKR ${process.env.CONSULTATION_FEE || '1000'}\n\n` +
+        `Please arrive 10 minutes early and bring:\n` +
+        `• Any previous prescriptions or test reports\n` +
+        `• Your CNIC\n\n` +
+        `To cancel or reschedule reply with 'cancel' or 'reschedule'.\n` +
+        `JazakAllah Khair! 🤲`
+      );
+    } catch (msgErr) {
+      console.error('WhatsApp notification failed:', msgErr.message);
+      // Booking still succeeds even if WhatsApp fails
+    }
+
+    console.log(`📅 Manual booking by ${req.user.username}: ${patientPhone} → ${timeSlot}`);
+    res.json({ ok: true, appointment: appt });
+
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// ── NEW: Get free slots for a specific date (used by manual booking form) ─────
+app.get('/api/availability/slots/:date', requireAuth, async (req, res) => {
+  try {
+    const d = new Date(req.params.date); d.setHours(0,0,0,0);
+    const nextDay = new Date(d); nextDay.setDate(nextDay.getDate() + 1);
+
+    const av = await Availability.findOne({ date: { $gte: d, $lt: nextDay }, isOpen: true });
+    if (!av) return res.json({ slots: [], message: 'No availability set for this date' });
+
+    const freeSlots = av.slots.filter(s => !s.isBooked).map(s => s.time);
+    res.json({ slots: freeSlots, dayLabel: av.dayLabel });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+app.post('/api/availability/:date/cancel-day', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const date = new Date(req.params.date); date.setHours(0,0,0,0);
+    const nextDay = new Date(date); nextDay.setDate(nextDay.getDate() + 1);
+    const appointments = await Appointment.find({ date: { $gte: date, $lt: nextDay }, status: 'confirmed' });
     for (const appt of appointments) {
-      appt.status = 'cancelled';
-      appt.cancelledAt = new Date();
+      appt.status = 'cancelled'; appt.cancelledAt = new Date();
       appt.cancelledBy = req.user.username;
       appt.cancelReason = req.body.reason || 'Doctor unavailable today';
       await appt.save();
-
-      await Patient.findOneAndUpdate(
-        { phoneNumber: appt.patientPhone },
-        { $set: { status: 'cancelled', appointmentId: null } }
-      );
-
+      await Patient.findOneAndUpdate({ phoneNumber: appt.patientPhone },
+        { $set: { status: 'cancelled', appointmentId: null } });
       await sendTextMessage(appt.patientPhone,
         `Dear ${appt.patientName},\n\n` +
-        `Your appointment on ${date.toLocaleDateString('en-PK')} at ${appt.timeSlot} ` +
-        `has been cancelled.\n\n` +
+        `Your appointment on ${date.toLocaleDateString('en-PK')} at ${appt.timeSlot} has been cancelled.\n\n` +
         `Reason: ${req.body.reason || 'Doctor unavailable'}\n\n` +
         `Please reply to reschedule. We apologize for the inconvenience.\n\n` +
         `📞 ${process.env.CLINIC_PHONE || 'Call clinic for urgent matters'}`
       );
-
-      await new Promise(r => setTimeout(r, 1500)); // avoid rate limits
+      await new Promise(r => setTimeout(r, 1500));
     }
-
-    // Mark day as closed in availability
     await Availability.findOneAndUpdate(
       { date: { $gte: date, $lt: nextDay } },
       { $set: { isOpen: false } }
     );
-
     res.json({ ok: true, cancelled: appointments.length, message: `${appointments.length} patients notified` });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// AVAILABILITY MANAGEMENT
+// AVAILABILITY
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 app.get('/api/availability', requireAuth, async (req, res) => {
   const today = new Date(); today.setHours(0,0,0,0);
   const nextMonth = new Date(today); nextMonth.setDate(nextMonth.getDate() + 30);
-  const avails = await Availability.find({
-    date: { $gte: today, $lte: nextMonth }
-  }).sort({ date: 1 });
+  const avails = await Availability.find({ date: { $gte: today, $lte: nextMonth } }).sort({ date: 1 });
   res.json(avails);
 });
 
-// Set availability for a date — generates 30-min slots automatically
 app.post('/api/availability', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { date, startTime, endTime, isOpen } = req.body;
     const d = new Date(date); d.setHours(0,0,0,0);
-
-    // Generate 30-min slots between startTime and endTime
     const slots = [];
     if (isOpen) {
       const [startH, startM] = parseTime(startTime);
@@ -548,24 +577,17 @@ app.post('/api/availability', requireAuth, requireAdmin, async (req, res) => {
         current += 30;
       }
     }
-
-    const dayLabel = d.toLocaleDateString('en-PK', {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-    });
-
+    const dayLabel = d.toLocaleDateString('en-PK', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
     const avail = await Availability.findOneAndUpdate(
       { date: d },
       { $set: { date: d, dayLabel, isOpen: isOpen !== false, startTime, endTime, slots } },
       { upsert: true, new: true }
     );
-
     res.json(avail);
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// ── Time helpers ──────────────────────────────────────────────────────────────
 function parseTime(timeStr) {
-  // Parses "09:00 AM" or "14:00" format
   if (!timeStr) return [9, 0];
   const upper = timeStr.toUpperCase();
   const isPM  = upper.includes('PM');
@@ -575,7 +597,6 @@ function parseTime(timeStr) {
   if (!isPM && h === 12) hours = 0;
   return [hours, m || 0];
 }
-
 function formatTime(minutes) {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
@@ -584,13 +605,17 @@ function formatTime(minutes) {
   return `${displayH}:${m.toString().padStart(2,'0')} ${suffix}`;
 }
 
-// ── Health check ──────────────────────────────────────────────────────────────
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// HEALTH + FRONTEND
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 app.get('/api/health', (req, res) => res.json({ status: 'running', bot: 'Doctor Bot' }));
 
 app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'dashboard/frontend/index.html'));
 });
- // WHATSAPP WEBHOOK
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// WHATSAPP WEBHOOK
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 app.get('/webhook', (req, res) => {
   const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
@@ -622,13 +647,9 @@ app.post('/webhook', (req, res) => {
       const text = message.text.body.trim();
       console.log(`📩 From ${from}: "${text}"`);
 
-      // Get or create patient record
       let patient = await Patient.findOne({ phoneNumber: from });
-      if (!patient) {
-        patient = await Patient.create({ phoneNumber: from });
-      }
+      if (!patient) patient = await Patient.create({ phoneNumber: from });
 
-      // If agent paused — save silently
       if (patient.isPaused) {
         await Patient.findOneAndUpdate({ phoneNumber: from }, {
           $push: { messages: { role: 'user', content: text } },
@@ -638,7 +659,6 @@ app.post('/webhook', (req, res) => {
         return;
       }
 
-      // Escalation check
       const escalation = ['human','agent','doctor','urgent','complaint','مسئلہ','فوری'];
       if (escalation.some(w => text.toLowerCase().includes(w))) {
         await sendTextMessage(from,
@@ -654,16 +674,13 @@ app.post('/webhook', (req, res) => {
         return;
       }
 
-      // Build history for AI
       const history = (patient.messages || []).slice(-30).map(m => ({
         role:    m.role === 'bot' ? 'assistant' : 'user',
         content: m.content
       }));
 
-      // Get AI reply
       let aiReply = await getAIResponse(history, text);
 
-      // Check for special commands in AI reply
       if (aiReply.includes('SHOW_SLOTS')) {
         const slotsText = await getAvailableSlotsText();
         aiReply = aiReply.replace('SHOW_SLOTS', slotsText);
@@ -672,26 +689,36 @@ app.post('/webhook', (req, res) => {
       if (aiReply.includes('BOOK_SLOT:')) {
         const slotMatch = aiReply.match(/BOOK_SLOT:(.+)/);
         if (slotMatch) {
-          const chosenSlot = slotMatch[1].trim();
-          
-          // Extract patient info from conversation
-          const info = extractPatientInfo([...history, { role: 'user', content: text }]);
-          
-          // Update patient record with extracted info
+          const chosenSlot    = slotMatch[1].trim();
+          const info          = extractPatientInfo([...history, { role: 'user', content: text }]);
           await Patient.findOneAndUpdate({ phoneNumber: from }, { $set: info });
           const updatedPatient = await Patient.findOne({ phoneNumber: from });
-          
-          const booking = await bookSlot(updatedPatient, chosenSlot);
+          const booking        = await bookSlot(updatedPatient, chosenSlot);
+
           if (booking.success) {
-            aiReply = aiReply.replace(/BOOK_SLOT:.+/, '').trim();
+            aiReply =
+              `✅ Appointment Confirmed!\n\n` +
+              `👤 Patient: ${updatedPatient.name || 'Patient'}\n` +
+              `📅 Date: ${booking.date}\n` +
+              `⏰ Time: ${booking.time}\n` +
+              `👨‍⚕️ Doctor: Dr. ${process.env.DOCTOR_NAME || 'Doctor'}\n` +
+              `📍 ${process.env.CLINIC_ADDRESS || 'Clinic'}\n` +
+              `💰 Fee: PKR ${process.env.CONSULTATION_FEE || '1000'}\n\n` +
+              `Please arrive 10 minutes early and bring:\n` +
+              `• Any previous prescriptions or test reports\n` +
+              `• Your CNIC\n\n` +
+              `You will receive a reminder the day before.\n` +
+              `To cancel reply with 'cancel'. JazakAllah Khair! 🤲`;
+          } else if (booking.reason === 'taken') {
+            const freshSlots = await getAvailableSlotsText();
+            aiReply = `Sorry, that slot was just booked by another patient. 😔\n\nHere are the currently available slots:\n\n${freshSlots}`;
           } else {
-            aiReply = 'Sorry, that slot is no longer available. Let me show you other options.\n\n' +
-                      await getAvailableSlotsText();
+            const freshSlots = await getAvailableSlotsText();
+            aiReply = `I couldn't find that slot. Please choose from the available options:\n\n${freshSlots}`;
           }
         }
       }
 
-      // Save messages
       await Patient.findOneAndUpdate(
         { phoneNumber: from },
         {
@@ -717,49 +744,36 @@ app.post('/webhook', (req, res) => {
 // SCHEDULED JOBS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function startSchedulers() {
-  // Run every day at 9 AM — send appointment reminders
   cron.schedule('0 9 * * *', async () => {
     console.log('🔔 Running appointment reminder check...');
     try {
       const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(0,0,0,0);
-      const dayAfter = new Date(tomorrow);
-      dayAfter.setDate(dayAfter.getDate() + 1);
-
+      tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(0,0,0,0);
+      const dayAfter = new Date(tomorrow); dayAfter.setDate(dayAfter.getDate() + 1);
       const appointments = await Appointment.find({
-        date:         { $gte: tomorrow, $lt: dayAfter },
-        status:       'confirmed',
-        reminderSent: false
+        date: { $gte: tomorrow, $lt: dayAfter }, status: 'confirmed', reminderSent: false
       });
-
       for (const appt of appointments) {
         await sendTextMessage(appt.patientPhone,
-          `Appointment Reminder 🏥\n\n` +
-          `Dear ${appt.patientName},\n\n` +
-          `This is a reminder that you have an appointment tomorrow:\n\n` +
+          `Appointment Reminder 🏥\n\nDear ${appt.patientName},\n\n` +
+          `You have an appointment tomorrow:\n\n` +
           `📅 ${appt.date.toLocaleDateString('en-PK', { weekday:'long', month:'long', day:'numeric' })}\n` +
           `⏰ ${appt.timeSlot}\n` +
           `💰 Fee: PKR ${process.env.CONSULTATION_FEE || '1000'}\n\n` +
-          `Please remember to bring:\n` +
-          `• Any previous prescriptions\n` +
-          `• Previous test reports\n` +
-          `• Your CNIC\n\n` +
-          `To cancel, reply with 'cancel'\n` +
-          `JazakAllah Khair! 🤲`
+          `Please bring:\n• Any previous prescriptions\n• Previous test reports\n• Your CNIC\n\n` +
+          `To cancel reply with 'cancel'\nJazakAllah Khair! 🤲`
         );
-        appt.reminderSent = true;
-        await appt.save();
+        appt.reminderSent = true; await appt.save();
         await new Promise(r => setTimeout(r, 2000));
       }
       console.log(`📤 Reminders sent: ${appointments.length}`);
-    } catch (err) {
-      console.error('Reminder error:', err.message);
-    }
+    } catch (err) { console.error('Reminder error:', err.message); }
   });
 }
 
-// ── Start server ──────────────────────────────────────────────────────────────
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// START
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
