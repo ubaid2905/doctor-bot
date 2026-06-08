@@ -421,10 +421,17 @@ app.post('/api/appointments/manual', requireAuth, async (req, res) => {
 
     const phone = String(patientPhone).replace(/[\s\-\(\)]/g, '');
 
-    const d = new Date(date); d.setHours(0, 0, 0, 0);
-    const nextDay = new Date(d); nextDay.setDate(nextDay.getDate() + 1);
+   const [year, month, day] = date.split('-').map(Number);
+const windowStart = new Date(year, month - 1, day - 1, 0, 0, 0);
+const windowEnd   = new Date(year, month - 1, day + 1, 23, 59, 59);
 
-    const avail = await Availability.findOne({ date: { $gte: d, $lt: nextDay }, isOpen: true });
+const allAvails = await Availability.find({ date: { $gte: windowStart, $lte: windowEnd }, isOpen: true });
+const avail = allAvails.find(a => {
+  const d = new Date(a.date);
+  return d.getFullYear() === year &&
+         (d.getMonth() + 1) === month &&
+         d.getDate() === day;
+});
     if (!avail)
       return res.status(400).json({ message: 'No availability set for this date. Set it in the Calendar first.' });
 
@@ -517,10 +524,23 @@ app.post('/api/appointments/manual', requireAuth, async (req, res) => {
 // ── GET FREE SLOTS FOR A DATE (used by manual booking modal) ──────────────────
 app.get('/api/availability/:date/slots', requireAuth, async (req, res) => {
   try {
-    const d = new Date(req.params.date); d.setHours(0, 0, 0, 0);
-    const nextDay = new Date(d); nextDay.setDate(nextDay.getDate() + 1);
+    // Parse date parts directly to avoid timezone shifting
+    const [year, month, day] = req.params.date.split('-').map(Number);
 
-    const avail = await Availability.findOne({ date: { $gte: d, $lt: nextDay } });
+    // Search a wide 48-hour window to catch any timezone offset
+    const windowStart = new Date(year, month - 1, day - 1, 0, 0, 0);
+    const windowEnd   = new Date(year, month - 1, day + 1, 23, 59, 59);
+
+    const avails = await Availability.find({ date: { $gte: windowStart, $lte: windowEnd } });
+
+    // Find the one that actually matches this calendar date
+    const avail = avails.find(a => {
+      const d = new Date(a.date);
+      return d.getFullYear() === year &&
+             (d.getMonth() + 1) === month &&
+             d.getDate() === day;
+    });
+
     if (!avail || !avail.isOpen)
       return res.json({ isOpen: false, slots: [] });
 
