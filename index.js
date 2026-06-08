@@ -522,34 +522,19 @@ const avail = allAvails.find(a => {
 });
 
 // ── GET FREE SLOTS FOR A DATE (used by manual booking modal) ──────────────────
-app.get('/api/availability/:date/slots', requireAuth, async (req, res) => {
-  try {
-    // Parse date parts directly to avoid timezone shifting
-    const [year, month, day] = req.params.date.split('-').map(Number);
-
-    // Search a wide 48-hour window to catch any timezone offset
-    const windowStart = new Date(year, month - 1, day - 1, 0, 0, 0);
-    const windowEnd   = new Date(year, month - 1, day + 1, 23, 59, 59);
-
-    const avails = await Availability.find({ date: { $gte: windowStart, $lte: windowEnd } });
-
-    // Find the one that actually matches this calendar date
-    const avail = avails.find(a => {
-      const d = new Date(a.date);
-      return d.getFullYear() === year &&
-             (d.getMonth() + 1) === month &&
-             d.getDate() === day;
-    });
-
-    if (!avail || !avail.isOpen)
-      return res.json({ isOpen: false, slots: [] });
-
-    const freeSlots = avail.slots.filter(s => !s.isBooked).map(s => s.time);
-    res.json({ isOpen: true, dayLabel: avail.dayLabel, slots: freeSlots });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+app.get('/api/debug/availability', requireAuth, async (req, res) => {
+  const all = await Availability.find({}).sort({ date: 1 }).limit(10);
+  res.json(all.map(a => ({
+    stored_date_raw: a.date,
+    stored_date_iso: new Date(a.date).toISOString(),
+    stored_date_local: new Date(a.date).toLocaleString('en-PK'),
+    dayLabel: a.dayLabel,
+    isOpen: a.isOpen,
+    totalSlots: a.slots.length,
+    freeSlots: a.slots.filter(s => !s.isBooked).length
+  })));
 });
+
 
 // Cancel single appointment
 app.post('/api/appointments/:id/cancel', requireAuth, async (req, res) => {
