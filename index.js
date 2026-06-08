@@ -522,7 +522,7 @@ const avail = allAvails.find(a => {
 });
 
 // ── GET FREE SLOTS FOR A DATE (used by manual booking modal) ──────────────────
-app.get('/api/debug/availability', requireAuth, async (req, res) => {
+app.get('/api/debug/availability', async (req, res) => {
   const all = await Availability.find({}).sort({ date: 1 }).limit(10);
   res.json(all.map(a => ({
     stored_date_raw: a.date,
@@ -853,6 +853,7 @@ function startSchedulers() {
 // ── Start server ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
+  console.log('Server timezone:', Intl.DateTimeFormat().resolvedOptions().timeZone);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🏥  Doctor Bot — STARTED');
   console.log('🌐  Port: ' + PORT);
