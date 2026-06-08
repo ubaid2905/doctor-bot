@@ -421,11 +421,20 @@ app.post('/api/appointments/manual', requireAuth, async (req, res) => {
 
     const phone = String(patientPhone).replace(/[\s\-\(\)]/g, '');
 
-   const [year, month, day] = date.split('-').map(Number);
+// Replace this whole block:
+const [year, month, day] = date.split('-').map(Number);
 const windowStart = new Date(year, month - 1, day - 1, 0, 0, 0);
 const windowEnd   = new Date(year, month - 1, day + 1, 23, 59, 59);
-
 const allAvails = await Availability.find({ date: { $gte: windowStart, $lte: windowEnd }, isOpen: true });
+const avail = allAvails.find(a => {
+  const d = new Date(a.date);
+  return d.getFullYear() === year &&
+         (d.getMonth() + 1) === month &&
+         d.getDate() === day;
+});
+
+// With this single line:
+const avail = await Availability.findOne({ date: new Date(date + 'T00:00:00.000Z'), isOpen: true });
 const avail = allAvails.find(a => {
   const d = new Date(a.date);
   return d.getFullYear() === year &&
@@ -621,15 +630,22 @@ app.post('/api/availability/:date/cancel-day', requireAuth, requireAdmin, async 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // AVAILABILITY MANAGEMENT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-app.get('/api/availability', requireAuth, async (req, res) => {
-  const today = new Date(); today.setHours(0,0,0,0);
-  const nextMonth = new Date(today); nextMonth.setDate(nextMonth.getDate() + 30);
-  const avails = await Availability.find({
-    date: { $gte: today, $lte: nextMonth }
-  }).sort({ date: 1 });
-  res.json(avails);
-});
+app.get('/api/availability/:date/slots', requireAuth, async (req, res) => {
+  try {
+    // Date stored as UTC midnight — query it directly
+    const dateUTC = new Date(req.params.date + 'T00:00:00.000Z');
 
+    const avail = await Availability.findOne({ date: dateUTC });
+
+    if (!avail || !avail.isOpen)
+      return res.json({ isOpen: false, slots: [] });
+
+    const freeSlots = avail.slots.filter(s => !s.isBooked).map(s => s.time);
+    res.json({ isOpen: true, dayLabel: avail.dayLabel, slots: freeSlots });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 app.post('/api/availability', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { date, startTime, endTime, isOpen } = req.body;
