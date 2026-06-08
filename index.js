@@ -60,7 +60,8 @@ function generatePatientPDF(patient) {
        .text('PATIENT MEDICAL HISTORY', { align: 'center' });
     doc.moveDown(0.5);
     doc.fontSize(12).fillColor('#666')
-       .text(`Generated: ${new Date().toLocaleString('en-PK')}`, { align: 'center' });
+       .text('Generated: ' + new Date().toLocaleString('en-PK'), { align: 'center' });
+
     doc.moveDown();
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke('#075e54');
     doc.moveDown();
@@ -68,12 +69,13 @@ function generatePatientPDF(patient) {
     doc.fontSize(14).fillColor('#075e54').text('PERSONAL INFORMATION');
     doc.moveDown(0.3);
     doc.fontSize(11).fillColor('#111');
-    doc.text(`Name:         ${patient.name || 'Not provided'}`);
-    doc.text(`Age:          ${patient.age || 'Not provided'}`);
-    doc.text(`Gender:       ${patient.gender || 'Not provided'}`);
-    doc.text(`Blood Group:  ${patient.bloodGroup || 'Not provided'}`);
-    doc.text(`Phone:        ${patient.phoneNumber}`);
-    doc.text(`First Visit:  ${new Date(patient.firstSeen).toLocaleDateString('en-PK')}`);
+    doc.text('Name:         ' + (patient.name || 'Not provided'));
+    doc.text('Age:          ' + (patient.age || 'Not provided'));
+    doc.text('Gender:       ' + (patient.gender || 'Not provided'));
+    doc.text('Blood Group:  ' + (patient.bloodGroup || 'Not provided'));
+    doc.text('Phone:        ' + patient.phoneNumber);
+    doc.text('First Visit:  ' + new Date(patient.firstSeen).toLocaleDateString('en-PK'));
+
     doc.moveDown();
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke('#ddd');
     doc.moveDown();
@@ -81,9 +83,12 @@ function generatePatientPDF(patient) {
     doc.fontSize(14).fillColor('#075e54').text('PRESENTING SYMPTOMS');
     doc.moveDown(0.3);
     doc.fontSize(11).fillColor('#111');
-    if (patient.symptoms?.length) {
-      patient.symptoms.forEach(s => doc.text(`  • ${s}`));
-    } else { doc.text('  Not recorded'); }
+    if (patient.symptoms && patient.symptoms.length) {
+      patient.symptoms.forEach(s => doc.text('  - ' + s));
+    } else {
+      doc.text('  Not recorded');
+    }
+
     doc.moveDown();
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke('#ddd');
     doc.moveDown();
@@ -92,19 +97,22 @@ function generatePatientPDF(patient) {
     doc.moveDown(0.3);
     doc.fontSize(11).fillColor('#111');
     doc.text('Existing Conditions:');
-    if (patient.existingConditions?.length) {
-      patient.existingConditions.forEach(c => doc.text(`  • ${c}`));
+    if (patient.existingConditions && patient.existingConditions.length) {
+      patient.existingConditions.forEach(c => doc.text('  - ' + c));
     } else { doc.text('  None reported'); }
+
     doc.moveDown(0.5);
     doc.text('Current Medications:');
-    if (patient.currentMedication?.length) {
-      patient.currentMedication.forEach(m => doc.text(`  • ${m}`));
+    if (patient.currentMedication && patient.currentMedication.length) {
+      patient.currentMedication.forEach(m => doc.text('  - ' + m));
     } else { doc.text('  None'); }
+
     doc.moveDown(0.5);
     doc.text('Allergies:');
-    if (patient.allergies?.length) {
-      patient.allergies.forEach(a => doc.text(`  • ${a}`));
+    if (patient.allergies && patient.allergies.length) {
+      patient.allergies.forEach(a => doc.text('  - ' + a));
     } else { doc.text('  None reported'); }
+
     doc.moveDown();
     doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke('#ddd');
     doc.moveDown();
@@ -113,10 +121,11 @@ function generatePatientPDF(patient) {
     doc.moveDown(0.3);
     doc.fontSize(11).fillColor('#111');
     if (patient.appointmentId) {
-      doc.text(`Status: ${patient.status}`);
+      doc.text('Status: ' + patient.status);
     } else {
       doc.text('No appointment booked yet');
     }
+
     doc.end();
   });
 }
@@ -141,8 +150,8 @@ async function getAvailableSlotsText() {
   availabilities.forEach(av => {
     const openSlots = av.slots.filter(s => !s.isBooked);
     if (openSlots.length) {
-      text += `📅 ${av.dayLabel}\n`;
-      openSlots.forEach(s => { text += `   ⏰ ${s.time}\n`; });
+      text += '📅 ' + av.dayLabel + '\n';
+      openSlots.forEach(s => { text += '   ⏰ ' + s.time + '\n'; });
       text += '\n';
     }
   });
@@ -150,7 +159,7 @@ async function getAvailableSlotsText() {
   return text;
 }
 
-// ── Helper: book a slot (atomic, prevents double booking) ─────────────────────
+// ── Helper: book a slot (used by WhatsApp bot) ────────────────────────────────
 async function bookSlot(patient, chosenSlotText) {
   const today = new Date();
   today.setHours(0,0,0,0);
@@ -163,93 +172,79 @@ async function bookSlot(patient, chosenSlotText) {
 
   for (const av of availabilities) {
     for (const slot of av.slots) {
-      const slotMatches =
-        chosenSlotText.toLowerCase().includes(slot.time.toLowerCase()) &&
-        (
-          chosenSlotText.toLowerCase().includes(
-            av.date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase()
-          ) ||
-          chosenSlotText.includes(
-            av.date.toLocaleDateString('en-PK', { day: 'numeric', month: 'numeric' })
-          ) ||
-          chosenSlotText.includes(av.dayLabel?.split(',')[0]?.toLowerCase() || '')
+      if (!slot.isBooked && chosenSlotText.includes(slot.time)) {
+        slot.isBooked     = true;
+        slot.patientPhone = patient.phoneNumber;
+        slot.patientName  = patient.name;
+        await av.save();
+
+        const appt = await Appointment.create({
+          patientPhone: patient.phoneNumber,
+          patientName:  patient.name,
+          date:         av.date,
+          timeSlot:     slot.time,
+          status:       'confirmed'
+        });
+
+        const pdfBase64 = await generatePatientPDF(patient);
+
+        await Patient.findOneAndUpdate(
+          { phoneNumber: patient.phoneNumber },
+          {
+            $set: {
+              appointmentId: appt._id,
+              status:        'confirmed',
+              pdfGenerated:  true,
+              pdfData:       pdfBase64
+            }
+          }
         );
 
-      if (!slotMatches) continue;
-
-      // Re-fetch fresh to prevent race condition
-      const freshAv   = await Availability.findById(av._id);
-      const freshSlot = freshAv.slots.find(s => s.time === slot.time);
-      if (!freshSlot || freshSlot.isBooked) {
-        return { success: false, reason: 'taken' };
+        return { success: true, date: av.dayLabel, time: slot.time, apptId: appt._id };
       }
-
-      // Atomic update — only succeeds if still not booked
-      const updated = await Availability.findOneAndUpdate(
-        {
-          _id:              av._id,
-          'slots.time':     slot.time,
-          'slots.isBooked': false
-        },
-        {
-          $set: {
-            'slots.$.isBooked':     true,
-            'slots.$.patientPhone': patient.phoneNumber,
-            'slots.$.patientName':  patient.name
-          }
-        },
-        { new: true }
-      );
-
-      if (!updated) return { success: false, reason: 'taken' };
-
-      const appt = await Appointment.create({
-        patientPhone: patient.phoneNumber,
-        patientName:  patient.name,
-        date:         av.date,
-        timeSlot:     slot.time,
-        status:       'confirmed'
-      });
-
-      const pdfBase64 = await generatePatientPDF(patient);
-
-      await Patient.findOneAndUpdate(
-        { phoneNumber: patient.phoneNumber },
-        { $set: { appointmentId: appt._id, status: 'confirmed', pdfGenerated: true, pdfData: pdfBase64 } }
-      );
-
-      return { success: true, date: av.dayLabel, time: slot.time, apptId: appt._id };
     }
   }
-  return { success: false, reason: 'not_found' };
+  return { success: false };
 }
 
 // ── Helper: extract patient info from conversation ────────────────────────────
 function extractPatientInfo(messages) {
-  const info = { symptoms: [], existingConditions: [], currentMedication: [], allergies: [] };
+  const info = {
+    symptoms: [], existingConditions: [],
+    currentMedication: [], allergies: []
+  };
+
   messages.forEach((msg, i) => {
     if (msg.role !== 'user') return;
     const prev = messages[i-1];
     if (!prev || prev.role !== 'bot') return;
+
     const q = prev.content.toLowerCase();
     const a = msg.content.trim();
-    if (q.includes('full name'))       info.name = a;
-    else if (q.includes('how old'))    info.age = parseInt(a) || a;
-    else if (q.includes('gender'))     info.gender = a;
-    else if (q.includes('blood group'))info.bloodGroup = a;
-    else if (q.includes('symptoms'))   info.symptoms = [a];
+
+    if (q.includes('full name'))
+      info.name = a;
+    else if (q.includes('how old'))
+      info.age = parseInt(a) || a;
+    else if (q.includes('gender'))
+      info.gender = a;
+    else if (q.includes('blood group'))
+      info.bloodGroup = a;
+    else if (q.includes('symptoms'))
+      info.symptoms = [a];
     else if (q.includes('existing medical') || q.includes('conditions'))
-      info.existingConditions = a.toLowerCase() === 'no' || a.toLowerCase() === 'none' ? [] : [a];
+      info.existingConditions = (a.toLowerCase() === 'no' || a.toLowerCase() === 'none') ? [] : [a];
     else if (q.includes('medication'))
-      info.currentMedication = a.toLowerCase() === 'no' || a.toLowerCase() === 'none' ? [] : [a];
+      info.currentMedication = (a.toLowerCase() === 'no' || a.toLowerCase() === 'none') ? [] : [a];
     else if (q.includes('allergies'))
-      info.allergies = a.toLowerCase() === 'no' || a.toLowerCase() === 'none' ? [] : [a];
+      info.allergies = (a.toLowerCase() === 'no' || a.toLowerCase() === 'none') ? [] : [a];
   });
+
   return info;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// SETUP
+// SETUP ROUTE — create admin once
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 app.post('/api/setup', async (req, res) => {
   try {
@@ -258,8 +253,10 @@ app.post('/api/setup', async (req, res) => {
     const { username, password } = req.body;
     const admin = new User({ username, password, role: 'admin' });
     await admin.save();
-    res.json({ message: `Admin "${username}" created. Setup locked.` });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+    res.json({ message: 'Admin "' + username + '" created. Setup locked.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -268,8 +265,9 @@ app.post('/api/setup', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    const user = await User.findOne({ username: username?.toLowerCase().trim() });
-    if (!user || !user.isActive) return res.status(401).json({ message: 'Invalid credentials' });
+    const user = await User.findOne({ username: username && username.toLowerCase().trim() });
+    if (!user || !user.isActive)
+      return res.status(401).json({ message: 'Invalid credentials' });
     const match = await user.comparePassword(password);
     if (!match) return res.status(401).json({ message: 'Invalid credentials' });
     user.lastLogin = new Date(); await user.save();
@@ -293,7 +291,7 @@ app.post('/api/auth/change-password', requireAuth, async (req, res) => {
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// TEAM
+// TEAM MANAGEMENT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 app.get('/api/team', requireAuth, requireAdmin, async (req, res) => {
   const agents = await User.find({ role: 'agent' }).select('-password').sort({ createdAt: -1 });
@@ -302,7 +300,7 @@ app.get('/api/team', requireAuth, requireAdmin, async (req, res) => {
 app.post('/api/team', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { username, password } = req.body;
-    const exists = await User.findOne({ username: username?.toLowerCase() });
+    const exists = await User.findOne({ username: username && username.toLowerCase() });
     if (exists) return res.status(400).json({ message: 'Username taken' });
     const agent = new User({ username, password, role: 'agent', createdBy: req.user.username });
     await agent.save();
@@ -327,7 +325,7 @@ app.post('/api/team/:username/reset-password', requireAuth, requireAdmin, async 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 app.get('/api/stats', requireAuth, async (req, res) => {
   try {
-    const today    = new Date(); today.setHours(0,0,0,0);
+    const today = new Date(); today.setHours(0,0,0,0);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
     const total        = await Patient.countDocuments();
     const todayAppts   = await Appointment.countDocuments({ date: { $gte: today, $lt: tomorrow }, status: 'confirmed' });
@@ -347,27 +345,33 @@ app.get('/api/patients', requireAuth, async (req, res) => {
     .sort({ lastActive: -1 });
   res.json(patients);
 });
+
 app.get('/api/patients/:phone', requireAuth, async (req, res) => {
-  const p = await Patient.findOne({ phoneNumber: req.params.phone }).populate('appointmentId');
+  const p = await Patient.findOne({ phoneNumber: req.params.phone })
+    .populate('appointmentId');
   if (!p) return res.status(404).json({ message: 'Patient not found' });
   res.json(p);
 });
+
 app.get('/api/patients/:phone/pdf', requireAuth, async (req, res) => {
   const p = await Patient.findOne({ phoneNumber: req.params.phone });
-  if (!p?.pdfData) return res.status(404).json({ message: 'PDF not generated yet' });
+  if (!p || !p.pdfData) return res.status(404).json({ message: 'PDF not generated yet' });
   const buffer = Buffer.from(p.pdfData, 'base64');
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${p.name || p.phoneNumber}-history.pdf"`);
+  res.setHeader('Content-Disposition', 'attachment; filename="' + (p.name || p.phoneNumber) + '-history.pdf"');
   res.send(buffer);
 });
+
 app.post('/api/patients/:phone/generate-pdf', requireAuth, async (req, res) => {
   const p = await Patient.findOne({ phoneNumber: req.params.phone });
   if (!p) return res.status(404).json({ message: 'Patient not found' });
   const pdfBase64 = await generatePatientPDF(p);
-  await Patient.findOneAndUpdate({ phoneNumber: req.params.phone },
-    { $set: { pdfGenerated: true, pdfData: pdfBase64 } });
+  await Patient.findOneAndUpdate({ phoneNumber: req.params.phone }, {
+    $set: { pdfGenerated: true, pdfData: pdfBase64 }
+  });
   res.json({ message: 'PDF generated' });
 });
+
 app.post('/api/patients/:phone/pause', requireAuth, async (req, res) => {
   await Patient.findOneAndUpdate({ phoneNumber: req.params.phone },
     { $set: { isPaused: true, pausedBy: req.user.username } });
@@ -378,6 +382,7 @@ app.post('/api/patients/:phone/resume', requireAuth, async (req, res) => {
     { $set: { isPaused: false, pausedBy: null } });
   res.json({ ok: true });
 });
+
 app.post('/api/patients/:phone/reply', requireAuth, async (req, res) => {
   try {
     const { message } = req.body;
@@ -406,159 +411,217 @@ app.get('/api/appointments', requireAuth, async (req, res) => {
   res.json(appts);
 });
 
+// ── MANUAL APPOINTMENT BOOKING BY STAFF ──────────────────────────────────────
+app.post('/api/appointments/manual', requireAuth, async (req, res) => {
+  try {
+    const { patientName, patientPhone, date, timeSlot, age, gender, notes } = req.body;
+
+    if (!patientName || !patientPhone || !date || !timeSlot)
+      return res.status(400).json({ message: 'Name, phone, date and time slot are required' });
+
+    const phone = String(patientPhone).replace(/[\s\-\(\)]/g, '');
+
+    const d = new Date(date); d.setHours(0, 0, 0, 0);
+    const nextDay = new Date(d); nextDay.setDate(nextDay.getDate() + 1);
+
+    const avail = await Availability.findOne({ date: { $gte: d, $lt: nextDay }, isOpen: true });
+    if (!avail)
+      return res.status(400).json({ message: 'No availability set for this date. Set it in the Calendar first.' });
+
+    const slot = avail.slots.find(s => s.time === timeSlot && !s.isBooked);
+    if (!slot)
+      return res.status(400).json({ message: 'That slot is already booked or does not exist.' });
+
+    slot.isBooked     = true;
+    slot.patientPhone = phone;
+    slot.patientName  = patientName;
+    await avail.save();
+
+    const appt = await Appointment.create({
+      patientPhone: phone,
+      patientName,
+      date:      avail.date,
+      timeSlot,
+      status:    'confirmed',
+      notes:     notes || '',
+      bookedBy:  req.user.username,
+      bookedVia: 'dashboard'
+    });
+
+    let patient = await Patient.findOne({ phoneNumber: phone });
+    if (!patient) {
+      patient = await Patient.create({
+        phoneNumber:   phone,
+        name:          patientName,
+        age:           age || null,
+        gender:        gender || null,
+        status:        'confirmed',
+        appointmentId: appt._id,
+        firstSeen:     new Date(),
+        lastActive:    new Date()
+      });
+    } else {
+      const updateFields = {
+        name:          patientName,
+        status:        'confirmed',
+        appointmentId: appt._id,
+        lastActive:    new Date()
+      };
+      if (age)    updateFields.age    = age;
+      if (gender) updateFields.gender = gender;
+      await Patient.findOneAndUpdate({ phoneNumber: phone }, { $set: updateFields });
+      patient = await Patient.findOne({ phoneNumber: phone });
+    }
+
+    try {
+      const pdfBase64 = await generatePatientPDF(patient);
+      await Patient.findOneAndUpdate(
+        { phoneNumber: phone },
+        { $set: { pdfGenerated: true, pdfData: pdfBase64 } }
+      );
+    } catch (pdfErr) {
+      console.error('PDF generation error (non-fatal):', pdfErr.message);
+    }
+
+    try {
+      await sendTextMessage(phone,
+        'Assalam o Alaikum ' + patientName + '!\n\n' +
+        'Your appointment has been confirmed:\n\n' +
+        '📅 ' + avail.dayLabel + '\n' +
+        '⏰ ' + timeSlot + '\n' +
+        '💰 Consultation Fee: PKR ' + (process.env.CONSULTATION_FEE || '1000') + '\n\n' +
+        'Please remember to bring:\n' +
+        '- Previous prescriptions\n' +
+        '- Any test reports\n' +
+        '- Your CNIC\n\n' +
+        'To cancel or reschedule, reply to this message.\n\n' +
+        '📞 ' + (process.env.CLINIC_PHONE || 'Contact clinic for urgent matters') + '\n\n' +
+        'JazakAllah Khair!'
+      );
+    } catch (waErr) {
+      console.error('WhatsApp notify error (non-fatal):', waErr.message);
+    }
+
+    res.json({
+      ok: true,
+      appointmentId: appt._id,
+      message: 'Appointment booked for ' + patientName + ' on ' + avail.dayLabel + ' at ' + timeSlot + '. Patient notified via WhatsApp.'
+    });
+
+  } catch (err) {
+    console.error('Manual booking error:', err.message);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ── GET FREE SLOTS FOR A DATE (used by manual booking modal) ──────────────────
+app.get('/api/availability/:date/slots', requireAuth, async (req, res) => {
+  try {
+    const d = new Date(req.params.date); d.setHours(0, 0, 0, 0);
+    const nextDay = new Date(d); nextDay.setDate(nextDay.getDate() + 1);
+
+    const avail = await Availability.findOne({ date: { $gte: d, $lt: nextDay } });
+    if (!avail || !avail.isOpen)
+      return res.json({ isOpen: false, slots: [] });
+
+    const freeSlots = avail.slots.filter(s => !s.isBooked).map(s => s.time);
+    res.json({ isOpen: true, dayLabel: avail.dayLabel, slots: freeSlots });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Cancel single appointment
 app.post('/api/appointments/:id/cancel', requireAuth, async (req, res) => {
   try {
     const appt = await Appointment.findById(req.params.id);
     if (!appt) return res.status(404).json({ message: 'Not found' });
-    appt.status = 'cancelled'; appt.cancelledAt = new Date();
-    appt.cancelledBy = req.user.username;
+
+    appt.status       = 'cancelled';
+    appt.cancelledAt  = new Date();
+    appt.cancelledBy  = req.user.username;
     appt.cancelReason = req.body.reason || 'Doctor unavailable';
     await appt.save();
+
     await Availability.updateOne(
       { 'slots.patientPhone': appt.patientPhone },
       { $set: { 'slots.$.isBooked': false, 'slots.$.patientPhone': null, 'slots.$.patientName': null } }
     );
+
     await Patient.findOneAndUpdate(
       { phoneNumber: appt.patientPhone },
       { $set: { status: 'cancelled', appointmentId: null } }
     );
+
     await sendTextMessage(appt.patientPhone,
-      `Dear ${appt.patientName},\n\n` +
-      `Your appointment on ${appt.date.toLocaleDateString('en-PK')} at ${appt.timeSlot} ` +
-      `has been cancelled.\n\nReason: ${appt.cancelReason}\n\n` +
-      `Please reply to reschedule.\n\n` +
-      `📞 ${process.env.CLINIC_PHONE || '+92-300-0000000'}`
+      'Dear ' + appt.patientName + ',\n\n' +
+      'We regret to inform you that your appointment scheduled for:\n' +
+      '📅 ' + appt.date.toLocaleDateString('en-PK') + '\n' +
+      '⏰ ' + appt.timeSlot + '\n\n' +
+      'has been cancelled due to: ' + appt.cancelReason + '\n\n' +
+      'We sincerely apologize for the inconvenience.\n' +
+      'Please reply to this message to reschedule your appointment.\n\n' +
+      'For urgent matters, please call: ' + (process.env.CLINIC_PHONE || '+92-300-0000000')
     );
+
     res.json({ ok: true, message: 'Appointment cancelled and patient notified' });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// ── NEW: Manual booking from dashboard ────────────────────────────────────────
-app.post('/api/appointments/manual-book', requireAuth, async (req, res) => {
-  try {
-    const { patientPhone, patientName, date, timeSlot } = req.body;
-
-    if (!patientPhone || !date || !timeSlot)
-      return res.status(400).json({ message: 'Phone, date and time slot are required' });
-
-    const d = new Date(date); d.setHours(0,0,0,0);
-    const nextDay = new Date(d); nextDay.setDate(nextDay.getDate() + 1);
-
-    const av = await Availability.findOne({ date: { $gte: d, $lt: nextDay }, isOpen: true });
-    if (!av)
-      return res.status(404).json({ message: 'No availability set for this date. Set availability in the Calendar tab first.' });
-
-    const slot = av.slots.find(s => s.time === timeSlot);
-    if (!slot)
-      return res.status(404).json({ message: 'Slot not found for this date' });
-    if (slot.isBooked)
-      return res.status(400).json({ message: `${timeSlot} is already booked by another patient` });
-
-    // Atomic update — prevents double booking
-    const updated = await Availability.findOneAndUpdate(
-      { _id: av._id, 'slots.time': timeSlot, 'slots.isBooked': false },
-      { $set: {
-        'slots.$.isBooked':     true,
-        'slots.$.patientPhone': patientPhone,
-        'slots.$.patientName':  patientName || patientPhone
-      }},
-      { new: true }
-    );
-
-    if (!updated)
-      return res.status(400).json({ message: 'Slot was just booked by someone else. Please refresh and try again.' });
-
-    const appt = await Appointment.create({
-      patientPhone,
-      patientName: patientName || patientPhone,
-      date:        d,
-      timeSlot,
-      status:      'confirmed'
-    });
-
-    // Update patient record if they exist in the system
-    await Patient.findOneAndUpdate(
-      { phoneNumber: patientPhone },
-      { $set: { appointmentId: appt._id, status: 'confirmed' } }
-    );
-
-    // Send WhatsApp confirmation to patient
-    try {
-      await sendTextMessage(patientPhone,
-        `✅ Appointment Confirmed!\n\n` +
-        `👤 Patient: ${patientName || patientPhone}\n` +
-        `📅 Date: ${d.toLocaleDateString('en-PK', { weekday:'long', month:'long', day:'numeric' })}\n` +
-        `⏰ Time: ${timeSlot}\n` +
-        `👨‍⚕️ Doctor: Dr. ${process.env.DOCTOR_NAME || 'Doctor'}\n` +
-        `📍 ${process.env.CLINIC_ADDRESS || 'Clinic'}\n` +
-        `💰 Fee: PKR ${process.env.CONSULTATION_FEE || '1000'}\n\n` +
-        `Please arrive 10 minutes early and bring:\n` +
-        `• Any previous prescriptions or test reports\n` +
-        `• Your CNIC\n\n` +
-        `To cancel or reschedule reply with 'cancel' or 'reschedule'.\n` +
-        `JazakAllah Khair! 🤲`
-      );
-    } catch (msgErr) {
-      console.error('WhatsApp notification failed:', msgErr.message);
-      // Booking still succeeds even if WhatsApp fails
-    }
-
-    console.log(`📅 Manual booking by ${req.user.username}: ${patientPhone} → ${timeSlot}`);
-    res.json({ ok: true, appointment: appt });
-
-  } catch (err) { res.status(500).json({ message: err.message }); }
-});
-
-// ── NEW: Get free slots for a specific date (used by manual booking form) ─────
-app.get('/api/availability/slots/:date', requireAuth, async (req, res) => {
-  try {
-    const d = new Date(req.params.date); d.setHours(0,0,0,0);
-    const nextDay = new Date(d); nextDay.setDate(nextDay.getDate() + 1);
-
-    const av = await Availability.findOne({ date: { $gte: d, $lt: nextDay }, isOpen: true });
-    if (!av) return res.json({ slots: [], message: 'No availability set for this date' });
-
-    const freeSlots = av.slots.filter(s => !s.isBooked).map(s => s.time);
-    res.json({ slots: freeSlots, dayLabel: av.dayLabel });
-  } catch (err) { res.status(500).json({ message: err.message }); }
-});
-
+// Cancel entire day
 app.post('/api/availability/:date/cancel-day', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const date = new Date(req.params.date); date.setHours(0,0,0,0);
+    const date = new Date(req.params.date);
+    date.setHours(0,0,0,0);
     const nextDay = new Date(date); nextDay.setDate(nextDay.getDate() + 1);
-    const appointments = await Appointment.find({ date: { $gte: date, $lt: nextDay }, status: 'confirmed' });
+
+    const appointments = await Appointment.find({
+      date:   { $gte: date, $lt: nextDay },
+      status: 'confirmed'
+    });
+
     for (const appt of appointments) {
-      appt.status = 'cancelled'; appt.cancelledAt = new Date();
-      appt.cancelledBy = req.user.username;
+      appt.status       = 'cancelled';
+      appt.cancelledAt  = new Date();
+      appt.cancelledBy  = req.user.username;
       appt.cancelReason = req.body.reason || 'Doctor unavailable today';
       await appt.save();
-      await Patient.findOneAndUpdate({ phoneNumber: appt.patientPhone },
-        { $set: { status: 'cancelled', appointmentId: null } });
-      await sendTextMessage(appt.patientPhone,
-        `Dear ${appt.patientName},\n\n` +
-        `Your appointment on ${date.toLocaleDateString('en-PK')} at ${appt.timeSlot} has been cancelled.\n\n` +
-        `Reason: ${req.body.reason || 'Doctor unavailable'}\n\n` +
-        `Please reply to reschedule. We apologize for the inconvenience.\n\n` +
-        `📞 ${process.env.CLINIC_PHONE || 'Call clinic for urgent matters'}`
+
+      await Patient.findOneAndUpdate(
+        { phoneNumber: appt.patientPhone },
+        { $set: { status: 'cancelled', appointmentId: null } }
       );
+
+      await sendTextMessage(appt.patientPhone,
+        'Dear ' + appt.patientName + ',\n\n' +
+        'Your appointment on ' + date.toLocaleDateString('en-PK') + ' at ' + appt.timeSlot +
+        ' has been cancelled.\n\n' +
+        'Reason: ' + (req.body.reason || 'Doctor unavailable') + '\n\n' +
+        'Please reply to reschedule. We apologize for the inconvenience.\n\n' +
+        '📞 ' + (process.env.CLINIC_PHONE || 'Call clinic for urgent matters')
+      );
+
       await new Promise(r => setTimeout(r, 1500));
     }
+
     await Availability.findOneAndUpdate(
       { date: { $gte: date, $lt: nextDay } },
       { $set: { isOpen: false } }
     );
-    res.json({ ok: true, cancelled: appointments.length, message: `${appointments.length} patients notified` });
+
+    res.json({ ok: true, cancelled: appointments.length, message: appointments.length + ' patients notified' });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// AVAILABILITY
+// AVAILABILITY MANAGEMENT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 app.get('/api/availability', requireAuth, async (req, res) => {
   const today = new Date(); today.setHours(0,0,0,0);
   const nextMonth = new Date(today); nextMonth.setDate(nextMonth.getDate() + 30);
-  const avails = await Availability.find({ date: { $gte: today, $lte: nextMonth } }).sort({ date: 1 });
+  const avails = await Availability.find({
+    date: { $gte: today, $lte: nextMonth }
+  }).sort({ date: 1 });
   res.json(avails);
 });
 
@@ -566,6 +629,7 @@ app.post('/api/availability', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { date, startTime, endTime, isOpen } = req.body;
     const d = new Date(date); d.setHours(0,0,0,0);
+
     const slots = [];
     if (isOpen) {
       const [startH, startM] = parseTime(startTime);
@@ -577,16 +641,22 @@ app.post('/api/availability', requireAuth, requireAdmin, async (req, res) => {
         current += 30;
       }
     }
-    const dayLabel = d.toLocaleDateString('en-PK', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+    const dayLabel = d.toLocaleDateString('en-PK', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+
     const avail = await Availability.findOneAndUpdate(
       { date: d },
       { $set: { date: d, dayLabel, isOpen: isOpen !== false, startTime, endTime, slots } },
       { upsert: true, new: true }
     );
+
     res.json(avail);
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
+// ── Time helpers ──────────────────────────────────────────────────────────────
 function parseTime(timeStr) {
   if (!timeStr) return [9, 0];
   const upper = timeStr.toUpperCase();
@@ -597,20 +667,19 @@ function parseTime(timeStr) {
   if (!isPM && h === 12) hours = 0;
   return [hours, m || 0];
 }
+
 function formatTime(minutes) {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   const suffix = h >= 12 ? 'PM' : 'AM';
   const displayH = h > 12 ? h - 12 : h === 0 ? 12 : h;
-  return `${displayH}:${m.toString().padStart(2,'0')} ${suffix}`;
+  return displayH + ':' + m.toString().padStart(2,'0') + ' ' + suffix;
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// HEALTH + FRONTEND
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => res.json({ status: 'running', bot: 'Doctor Bot' }));
 
-app.get('/{*splat}', (req, res) => {
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dashboard/frontend/index.html'));
 });
 
@@ -618,7 +687,9 @@ app.get('/{*splat}', (req, res) => {
 // WHATSAPP WEBHOOK
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 app.get('/webhook', (req, res) => {
-  const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
+  const mode      = req.query['hub.mode'];
+  const token     = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
   if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
     res.status(200).send(challenge);
   } else { res.sendStatus(403); }
@@ -631,7 +702,10 @@ app.post('/webhook', (req, res) => {
   setImmediate(async () => {
     try {
       const body = req.body;
-      if (!body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) return;
+      if (!body || !body.entry || !body.entry[0] || !body.entry[0].changes ||
+          !body.entry[0].changes[0] || !body.entry[0].changes[0].value ||
+          !body.entry[0].changes[0].value.messages || !body.entry[0].changes[0].value.messages[0]) return;
+
       const message = body.entry[0].changes[0].value.messages[0];
       const from    = message.from;
 
@@ -640,15 +714,17 @@ app.post('/webhook', (req, res) => {
       setTimeout(() => processedMessages.delete(message.id), 10 * 60 * 1000);
 
       if (message.type !== 'text') {
-        await sendTextMessage(from, 'Please send text messages only 😊');
+        await sendTextMessage(from, 'Please send text messages only.');
         return;
       }
 
       const text = message.text.body.trim();
-      console.log(`📩 From ${from}: "${text}"`);
+      console.log('📩 From ' + from + ': "' + text + '"');
 
       let patient = await Patient.findOne({ phoneNumber: from });
-      if (!patient) patient = await Patient.create({ phoneNumber: from });
+      if (!patient) {
+        patient = await Patient.create({ phoneNumber: from });
+      }
 
       if (patient.isPaused) {
         await Patient.findOneAndUpdate({ phoneNumber: from }, {
@@ -663,7 +739,7 @@ app.post('/webhook', (req, res) => {
       if (escalation.some(w => text.toLowerCase().includes(w))) {
         await sendTextMessage(from,
           'Connecting you with our clinic staff immediately.\n\n' +
-          `📞 ${process.env.CLINIC_PHONE || 'Please call the clinic directly'}`
+          '📞 ' + (process.env.CLINIC_PHONE || 'Please call the clinic directly')
         );
         await Patient.findOneAndUpdate({ phoneNumber: from }, {
           $push: { messages: { role: 'user', content: text } },
@@ -689,32 +765,16 @@ app.post('/webhook', (req, res) => {
       if (aiReply.includes('BOOK_SLOT:')) {
         const slotMatch = aiReply.match(/BOOK_SLOT:(.+)/);
         if (slotMatch) {
-          const chosenSlot    = slotMatch[1].trim();
-          const info          = extractPatientInfo([...history, { role: 'user', content: text }]);
+          const chosenSlot = slotMatch[1].trim();
+          const info = extractPatientInfo([...history, { role: 'user', content: text }]);
           await Patient.findOneAndUpdate({ phoneNumber: from }, { $set: info });
           const updatedPatient = await Patient.findOne({ phoneNumber: from });
-          const booking        = await bookSlot(updatedPatient, chosenSlot);
-
+          const booking = await bookSlot(updatedPatient, chosenSlot);
           if (booking.success) {
-            aiReply =
-              `✅ Appointment Confirmed!\n\n` +
-              `👤 Patient: ${updatedPatient.name || 'Patient'}\n` +
-              `📅 Date: ${booking.date}\n` +
-              `⏰ Time: ${booking.time}\n` +
-              `👨‍⚕️ Doctor: Dr. ${process.env.DOCTOR_NAME || 'Doctor'}\n` +
-              `📍 ${process.env.CLINIC_ADDRESS || 'Clinic'}\n` +
-              `💰 Fee: PKR ${process.env.CONSULTATION_FEE || '1000'}\n\n` +
-              `Please arrive 10 minutes early and bring:\n` +
-              `• Any previous prescriptions or test reports\n` +
-              `• Your CNIC\n\n` +
-              `You will receive a reminder the day before.\n` +
-              `To cancel reply with 'cancel'. JazakAllah Khair! 🤲`;
-          } else if (booking.reason === 'taken') {
-            const freshSlots = await getAvailableSlotsText();
-            aiReply = `Sorry, that slot was just booked by another patient. 😔\n\nHere are the currently available slots:\n\n${freshSlots}`;
+            aiReply = aiReply.replace(/BOOK_SLOT:.+/, '').trim();
           } else {
-            const freshSlots = await getAvailableSlotsText();
-            aiReply = `I couldn't find that slot. Please choose from the available options:\n\n${freshSlots}`;
+            aiReply = 'Sorry, that slot is no longer available. Let me show you other options.\n\n' +
+                      await getAvailableSlotsText();
           }
         }
       }
@@ -732,7 +792,7 @@ app.post('/webhook', (req, res) => {
       );
 
       await sendTextMessage(from, aiReply);
-      console.log(`✅ Replied to ${from}`);
+      console.log('✅ Replied to ' + from);
 
     } catch (err) {
       console.error('❌ Webhook error:', err.message);
@@ -748,36 +808,48 @@ function startSchedulers() {
     console.log('🔔 Running appointment reminder check...');
     try {
       const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(0,0,0,0);
-      const dayAfter = new Date(tomorrow); dayAfter.setDate(dayAfter.getDate() + 1);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(0,0,0,0);
+      const dayAfter = new Date(tomorrow);
+      dayAfter.setDate(dayAfter.getDate() + 1);
+
       const appointments = await Appointment.find({
-        date: { $gte: tomorrow, $lt: dayAfter }, status: 'confirmed', reminderSent: false
+        date:         { $gte: tomorrow, $lt: dayAfter },
+        status:       'confirmed',
+        reminderSent: false
       });
+
       for (const appt of appointments) {
         await sendTextMessage(appt.patientPhone,
-          `Appointment Reminder 🏥\n\nDear ${appt.patientName},\n\n` +
-          `You have an appointment tomorrow:\n\n` +
-          `📅 ${appt.date.toLocaleDateString('en-PK', { weekday:'long', month:'long', day:'numeric' })}\n` +
-          `⏰ ${appt.timeSlot}\n` +
-          `💰 Fee: PKR ${process.env.CONSULTATION_FEE || '1000'}\n\n` +
-          `Please bring:\n• Any previous prescriptions\n• Previous test reports\n• Your CNIC\n\n` +
-          `To cancel reply with 'cancel'\nJazakAllah Khair! 🤲`
+          'Appointment Reminder 🏥\n\n' +
+          'Dear ' + appt.patientName + ',\n\n' +
+          'This is a reminder that you have an appointment tomorrow:\n\n' +
+          '📅 ' + appt.date.toLocaleDateString('en-PK', { weekday:'long', month:'long', day:'numeric' }) + '\n' +
+          '⏰ ' + appt.timeSlot + '\n' +
+          '💰 Fee: PKR ' + (process.env.CONSULTATION_FEE || '1000') + '\n\n' +
+          'Please remember to bring:\n' +
+          '- Any previous prescriptions\n' +
+          '- Previous test reports\n' +
+          '- Your CNIC\n\n' +
+          "To cancel, reply with 'cancel'\n" +
+          'JazakAllah Khair!'
         );
-        appt.reminderSent = true; await appt.save();
+        appt.reminderSent = true;
+        await appt.save();
         await new Promise(r => setTimeout(r, 2000));
       }
-      console.log(`📤 Reminders sent: ${appointments.length}`);
-    } catch (err) { console.error('Reminder error:', err.message); }
+      console.log('📤 Reminders sent: ' + appointments.length);
+    } catch (err) {
+      console.error('Reminder error:', err.message);
+    }
   });
 }
 
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// START
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ── Start server ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🏥  Doctor Bot — STARTED');
-  console.log(`🌐  Port: ${PORT}`);
+  console.log('🌐  Port: ' + PORT);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 });
