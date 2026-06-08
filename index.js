@@ -403,7 +403,7 @@ app.get('/api/appointments', requireAuth, async (req, res) => {
   const { date } = req.query;
   const filter = { status: { $in: ['confirmed', 'pending'] } };
   if (date) {
-    const d = new Date(date); d.setHours(0,0,0,0);
+    const d = new Date(date + 'T00:00:00.000Z');
     const next = new Date(d); next.setDate(next.getDate() + 1);
     filter.date = { $gte: d, $lt: next };
   }
@@ -421,17 +421,10 @@ app.post('/api/appointments/manual', requireAuth, async (req, res) => {
 
     const phone = String(patientPhone).replace(/[\s\-\(\)]/g, '');
 
+    // Use UTC midnight to match how dates are stored in MongoDB
+    const dateUTC = new Date(date + 'T00:00:00.000Z');
 
-    
-
-// With this single line:
-const avail = await Availability.findOne({ date: new Date(date + 'T00:00:00.000Z'), isOpen: true });
-const avail = allAvails.find(a => {
-  const d = new Date(a.date);
-  return d.getFullYear() === year &&
-         (d.getMonth() + 1) === month &&
-         d.getDate() === day;
-});
+    const avail = await Availability.findOne({ date: dateUTC, isOpen: true });
     if (!avail)
       return res.status(400).json({ message: 'No availability set for this date. Set it in the Calendar first.' });
 
@@ -522,19 +515,35 @@ const avail = allAvails.find(a => {
 });
 
 // ── GET FREE SLOTS FOR A DATE (used by manual booking modal) ──────────────────
+app.get('/api/availability/:date/slots', requireAuth, async (req, res) => {
+  try {
+    // Dates are stored as UTC midnight — query exactly
+    const dateUTC = new Date(req.params.date + 'T00:00:00.000Z');
+
+    const avail = await Availability.findOne({ date: dateUTC });
+    if (!avail || !avail.isOpen)
+      return res.json({ isOpen: false, slots: [] });
+
+    const freeSlots = avail.slots.filter(s => !s.isBooked).map(s => s.time);
+    res.json({ isOpen: true, dayLabel: avail.dayLabel, slots: freeSlots });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ── DEBUG ENDPOINT (remove after testing) ────────────────────────────────────
 app.get('/api/debug/availability', async (req, res) => {
   const all = await Availability.find({}).sort({ date: 1 }).limit(10);
   res.json(all.map(a => ({
-    stored_date_raw: a.date,
-    stored_date_iso: new Date(a.date).toISOString(),
+    stored_date_raw:   a.date,
+    stored_date_iso:   new Date(a.date).toISOString(),
     stored_date_local: new Date(a.date).toLocaleString('en-PK'),
-    dayLabel: a.dayLabel,
-    isOpen: a.isOpen,
-    totalSlots: a.slots.length,
-    freeSlots: a.slots.filter(s => !s.isBooked).length
+    dayLabel:          a.dayLabel,
+    isOpen:            a.isOpen,
+    totalSlots:        a.slots.length,
+    freeSlots:         a.slots.filter(s => !s.isBooked).length
   })));
 });
-
 
 // Cancel single appointment
 app.post('/api/appointments/:id/cancel', requireAuth, async (req, res) => {
@@ -576,12 +585,11 @@ app.post('/api/appointments/:id/cancel', requireAuth, async (req, res) => {
 // Cancel entire day
 app.post('/api/availability/:date/cancel-day', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const date = new Date(req.params.date);
-    date.setHours(0,0,0,0);
-    const nextDay = new Date(date); nextDay.setDate(nextDay.getDate() + 1);
+    const dateUTC = new Date(req.params.date + 'T00:00:00.000Z');
+    const nextDay = new Date(dateUTC); nextDay.setDate(nextDay.getDate() + 1);
 
     const appointments = await Appointment.find({
-      date:   { $gte: date, $lt: nextDay },
+      date:   { $gte: dateUTC, $lt: nextDay },
       status: 'confirmed'
     });
 
@@ -599,7 +607,7 @@ app.post('/api/availability/:date/cancel-day', requireAuth, requireAdmin, async 
 
       await sendTextMessage(appt.patientPhone,
         'Dear ' + appt.patientName + ',\n\n' +
-        'Your appointment on ' + date.toLocaleDateString('en-PK') + ' at ' + appt.timeSlot +
+        'Your appointment on ' + dateUTC.toLocaleDateString('en-PK') + ' at ' + appt.timeSlot +
         ' has been cancelled.\n\n' +
         'Reason: ' + (req.body.reason || 'Doctor unavailable') + '\n\n' +
         'Please reply to reschedule. We apologize for the inconvenience.\n\n' +
@@ -610,7 +618,7 @@ app.post('/api/availability/:date/cancel-day', requireAuth, requireAdmin, async 
     }
 
     await Availability.findOneAndUpdate(
-      { date: { $gte: date, $lt: nextDay } },
+      { date: dateUTC },
       { $set: { isOpen: false } }
     );
 
@@ -621,22 +629,15 @@ app.post('/api/availability/:date/cancel-day', requireAuth, requireAdmin, async 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // AVAILABILITY MANAGEMENT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-app.get('/api/availability/:date/slots', requireAuth, async (req, res) => {
-  try {
-    // Date stored as UTC midnight — query it directly
-    const dateUTC = new Date(req.params.date + 'T00:00:00.000Z');
-
-    const avail = await Availability.findOne({ date: dateUTC });
-
-    if (!avail || !avail.isOpen)
-      return res.json({ isOpen: false, slots: [] });
-
-    const freeSlots = avail.slots.filter(s => !s.isBooked).map(s => s.time);
-    res.json({ isOpen: true, dayLabel: avail.dayLabel, slots: freeSlots });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+app.get('/api/availability', requireAuth, async (req, res) => {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const nextMonth = new Date(today); nextMonth.setDate(nextMonth.getDate() + 30);
+  const avails = await Availability.find({
+    date: { $gte: today, $lte: nextMonth }
+  }).sort({ date: 1 });
+  res.json(avails);
 });
+
 app.post('/api/availability', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { date, startTime, endTime, isOpen } = req.body;
@@ -690,10 +691,6 @@ function formatTime(minutes) {
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => res.json({ status: 'running', bot: 'Doctor Bot' }));
-
-app.get(/.*/, (req, res) => {
-  res.sendFile(path.join(__dirname, 'dashboard/frontend/index.html'));
-});
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // WHATSAPP WEBHOOK
@@ -812,6 +809,11 @@ app.post('/webhook', (req, res) => {
   });
 });
 
+// ── SPA fallback ──────────────────────────────────────────────────────────────
+app.get(/.*/, (req, res) => {
+  res.sendFile(path.join(__dirname, 'dashboard/frontend/index.html'));
+});
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SCHEDULED JOBS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -860,7 +862,7 @@ function startSchedulers() {
 // ── Start server ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log('Server timezone:', Intl.DateTimeFormat().resolvedOptions().timeZone);
+  console.log('Server timezone: ' + Intl.DateTimeFormat().resolvedOptions().timeZone);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🏥  Doctor Bot — STARTED');
   console.log('🌐  Port: ' + PORT);
